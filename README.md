@@ -1,5 +1,5 @@
-# Code for: Heterogeneous Graph Representation for Dataset Link Prediction on Dynamic and Sparse Scholarly Graphs
-This repository contains the code of SAN, proposed as short paper at SIGIR'25.
+# Code for MM-SAN 
+This repository contains the code of MM-SAN, proposed as full paper at RECSYS'25.
 MES and PubMed datasets are anonymous and available on [Figshare](https://figshare.com/s/1e11a6f03fbf97d61936)
 
 ## Project structure
