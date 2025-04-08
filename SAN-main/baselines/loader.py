@@ -6,8 +6,6 @@ from torch_geometric import seed_everything
 from torch_geometric.data import HeteroData
 from torch_geometric.data import Data, InMemoryDataset
 import pickle
-from torch_geometric.utils import to_networkx
-
 import argparse
 import json
 import random
@@ -149,7 +147,12 @@ class ScholarlyDataset(InMemoryDataset):
             # return ['baseline_trans_1.pt']
             return ['graph_transductive_kcore_3.pt']
 
-        
+        elif 'inductive_full' in self.root:
+            return ['graph_inductive_full_0.pt']
+
+        elif 'inductive_light' in self.root:
+            return ['graph_inductive_light_0.pt']
+
     def download(self):
         # Download to `self.raw_dir`.
         pass
@@ -184,30 +187,49 @@ class ScholarlyDataset(InMemoryDataset):
         publication_path = self.root + '/publications.csv'
         dataset_path = self.root + '/datasets.csv'
         authors_path = self.root + '/authors.csv'
+        topic_path = self.root + '/topics_keywords_2.csv'
+        entity_path = self.root + '/entities.csv'
 
-        publication_x, publication_mapping = load_node_csv(publication_path, index_col='id',
+        publication_x, publication_net_x, publication_mapping = load_node_csv(publication_path, index_col='id',
                                                                               encoders={'content': ContentEncoder()})
-        dataset_x, dataset_mapping = load_node_csv(dataset_path, index_col='id',
+        print(publication_net_x.shape)
+        dataset_x, dataset_net_x, dataset_mapping = load_node_csv(dataset_path, index_col='id',
                                                                   encoders={'content': ContentEncoder()})
-        authors_x, author_mapping = load_node_csv(authors_path, index_col='id',
-                                                                 encoders={'fullname': ContentEncoder()})
+        authors_x, authors_net_x, author_mapping = load_node_csv(authors_path, index_col='id',
+                                                                 encoders={'fullname': KeywordEncoder()})
+        topic_x, topic_net_x, topic_mapping = load_node_csv(topic_path, index_col='id',
+                                                            encoders={'description': KeywordEncoder()})
+        entity_x, entity_net_x, entity_mapping = load_node_csv(entity_path, index_col='id',
+                                                               encoders={'name': KeywordEncoder()})
 
         if 'mes' not in self.root:
-            keyword_path = self.root +  '/keywords.csv'
-            orgs_path = self.root +  '/organizations.csv'
-            venue_path = self.root  + '/venues.csv'
-            orgs_x, orgs_mapping = load_node_csv(orgs_path, index_col='id',encoders={'name': ContentEncoder()})
-            venue_x, venue_mapping = load_node_csv(venue_path, index_col='id',encoders={'name': ContentEncoder()})
-            keyword_x, keyword_mapping = load_node_csv(keyword_path, index_col='id', encoders={'name': ContentEncoder()})
+            keyword_path = self.root + '/keywords.csv'
+            orgs_path = self.root + '/organizations.csv'
+            venue_path = self.root + '/venues.csv'
+            orgs_x, orgs_net_x, orgs_mapping = load_node_csv(orgs_path, index_col='id',
+                                                             encoders={'name': KeywordEncoder()})
+            venue_x, venue_net_x, venue_mapping = load_node_csv(venue_path, index_col='id',
+                                                                encoders={'name': KeywordEncoder()})
+            keyword_x, keyword_net_x, keyword_mapping = load_node_csv(keyword_path, index_col='id',
+                                                                      encoders={'name': KeywordEncoder()})
 
+        pd_edges_path_train = self.root + '/pubdataedges_train_kcore_2.csv'
+        pd_edges_path_test_trans = self.root + '/pubdataedges_test_trans_kcore_2.csv'
+        pd_edges_path_test_semi = self.root + '/pubdataedges_test_semi_kcore_2.csv'
+        pd_edges_path_test_ind = self.root + '/pubdataedges_test_ind_kcore_2.csv'
+        pd_edges_path_vali_trans = self.root + '/pubdataedges_validation_trans_kcore_2.csv'
+        # pd_edges_path_vali_semi = self.root + '/pubdataedges_validation_semi_kcore_2.csv'
+        # pd_edges_path_vali_ind = self.root + '/pubdataedges_validation_ind_kcore_2.csv'
 
-        pd_edges_path_train = self.root + '/pubdataedges_train_kcore_1.csv'
-        pd_edges_path_vali = self.root + '/pubdataedges_validation_kcore_1.csv'
-        pd_edges_path_test = self.root + '/pubdataedges_test_kcore_1.csv'
         pp_edges_path = self.root + '/pubpubedges.csv'
         dd_edges_path = self.root + '/datadataedges.csv'
         pa_edges_path = self.root + '/pubauthedges.csv'
         da_edges_path = self.root + '/dataauthedges.csv'
+        pe_edges_path = self.root + '/pubentedges.csv'
+        de_edges_path = self.root + '/dataentedges.csv'
+        pt_edges_path = self.root + '/pubtopicedges_keywords_2.csv'
+        dt_edges_path = self.root + '/datatopicedges_keywords_2.csv'
+
         if 'mes' not in self.root:
             pv_edges_path = self.root + '/pubvenuesedges.csv'
             po_edges_path = self.root + '/puborgedges.csv'
@@ -222,21 +244,94 @@ class ScholarlyDataset(InMemoryDataset):
             dst_index_col='target',
             dst_mapping=dataset_mapping,
         )
-        pd_edge_index_validation, pd_edge_label = load_edge_csv(
-            pd_edges_path_vali,
+        pd_edge_index_test_trans, pd_edge_label = load_edge_csv(
+            pd_edges_path_test_trans,
             src_index_col='source',
             src_mapping=publication_mapping,
             dst_index_col='target',
             dst_mapping=dataset_mapping,
         )
-        pd_edge_index_test, pd_edge_label = load_edge_csv(
-            pd_edges_path_test,
+        pd_edge_index_vali_trans, pd_edge_label = load_edge_csv(
+            pd_edges_path_vali_trans,
+            src_index_col='source',
+            src_mapping=publication_mapping,
+            dst_index_col='target',
+            dst_mapping=dataset_mapping,
+        )
+        pd_edge_index_test_semi, pd_edge_label = load_edge_csv(
+            pd_edges_path_test_semi,
             src_index_col='source',
             src_mapping=publication_mapping,
             dst_index_col='target',
             dst_mapping=dataset_mapping,
         )
 
+        pd_edge_index_test_ind, pd_edge_label = load_edge_csv(
+            pd_edges_path_test_ind,
+            src_index_col='source',
+            src_mapping=publication_mapping,
+            dst_index_col='target',
+            dst_mapping=dataset_mapping,
+        )
+
+        pp_edge_index, pp_edge_label = load_edge_csv(
+            pp_edges_path,
+            src_index_col='source',
+            src_mapping=publication_mapping,
+            dst_index_col='target',
+            dst_mapping=publication_mapping,
+        )
+
+        dd_edge_index, dd_edge_label = load_edge_csv(
+            dd_edges_path,
+            src_index_col='source',
+            src_mapping=dataset_mapping,
+            dst_index_col='target',
+            dst_mapping=dataset_mapping,
+        )
+
+        pa_edge_index, pa_edge_label = load_edge_csv(
+            pa_edges_path,
+            src_index_col='source',
+            src_mapping=publication_mapping,
+            dst_index_col='target',
+            dst_mapping=author_mapping,
+        )
+        da_edge_index, da_edge_label = load_edge_csv(
+            da_edges_path,
+            src_index_col='source',
+            src_mapping=dataset_mapping,
+            dst_index_col='target',
+            dst_mapping=author_mapping,
+        )
+        de_edge_index, de_edge_label = load_edge_csv(
+            de_edges_path,
+            src_index_col='source',
+            src_mapping=dataset_mapping,
+            dst_index_col='target',
+            dst_mapping=entity_mapping,
+        )
+        pe_edge_index, pe_edge_label = load_edge_csv(
+            pe_edges_path,
+            src_index_col='source',
+            src_mapping=publication_mapping,
+            dst_index_col='target',
+            dst_mapping=entity_mapping,
+        )
+        pt_edge_index, pt_edge_label = load_edge_csv(
+            pt_edges_path,
+            src_index_col='source',
+            src_mapping=publication_mapping,
+            dst_index_col='target',
+            dst_mapping=topic_mapping,
+        )
+        dt_edge_index, dt_edge_label = load_edge_csv(
+            dt_edges_path,
+            src_index_col='source',
+            src_mapping=dataset_mapping,
+            dst_index_col='target',
+            dst_mapping=topic_mapping,
+        )
         if 'mes' not in self.root:
             pv_edge_index, pv_edge_label = load_edge_csv(
                 pv_edges_path,
@@ -274,93 +369,94 @@ class ScholarlyDataset(InMemoryDataset):
                 dst_mapping=keyword_mapping,
             )
 
-        # pd_edge_index_train_mp = pd_edge_index_train[:,:int(2*pd_edge_index_train.size(1)/3)]
-        # pd_edge_index_label_train = pd_edge_index_train[:,int(2*pd_edge_index_train.size(1)/3):]
-
-        # pd_edge_index_validation_mp = torch.cat([pd_edge_index_train,pd_edge_index_validation[:,:int(pd_edge_index_validation.size(1)/2)]],dim=1)
-        # pd_edge_index_label_validation = pd_edge_index_validation[:,int(pd_edge_index_validation.size(1)/2):]
-        # #
-        # pd_edge_index_test_mp = torch.cat([pd_edge_index_train,pd_edge_index_validation,pd_edge_index_test[:,:int(pd_edge_index_test.size(1)/2)]],dim=1)
-        # pd_edge_index_label_test = pd_edge_index_test[:,int(pd_edge_index_test.size(1)/2):]
-
-        pp_edge_index, pp_edge_label = load_edge_csv(
-            pp_edges_path,
-            src_index_col='source',
-            src_mapping=publication_mapping,
-            dst_index_col='target',
-            dst_mapping=publication_mapping,
-        )
-
-        dd_edge_index, dd_edge_label = load_edge_csv(
-            dd_edges_path,
-            src_index_col='source',
-            src_mapping=dataset_mapping,
-            dst_index_col='target',
-            dst_mapping=dataset_mapping,
-        )
-
-        pa_edge_index, pa_edge_label = load_edge_csv(
-            pa_edges_path,
-            src_index_col='source',
-            src_mapping=publication_mapping,
-            dst_index_col='target',
-            dst_mapping=author_mapping,
-        )
-        da_edge_index, da_edge_label = load_edge_csv(
-            da_edges_path,
-            src_index_col='source',
-            src_mapping=dataset_mapping,
-            dst_index_col='target',
-            dst_mapping=author_mapping,
-        )
-
-
-
         data = HeteroData()
         data['publication'].x = publication_x
+        data['publication'].net_x = publication_net_x
         data['publication'].mapping = publication_mapping
         data['publication'].num_nodes = len(publication_mapping)  # Users do not have any features.
+        data['publication'].rev_mapping = {v: k for k, v in publication_mapping.items()}
 
         data['dataset'].num_nodes = len(dataset_mapping)  # Users do not have any features.
         data['dataset'].x = dataset_x
+        data['dataset'].net_x = dataset_net_x
         data['dataset'].mapping = dataset_mapping
+        data['dataset'].rev_mapping = {v: k for k, v in dataset_mapping.items()}
 
         data['author'].num_nodes = len(author_mapping)  # Users do not have any features.
         data['author'].x = authors_x
+        data['author'].net_x = authors_net_x
         data['author'].mapping = author_mapping
+        data['author'].rev_mapping = {v: k for k, v in author_mapping.items()}
+
+        data['topic'].num_nodes = len(topic_mapping)  # Users do not have any features.
+        data['topic'].x = topic_x
+        data['topic'].net_x = topic_net_x
+        data['topic'].mapping = topic_mapping
+        data['topic'].rev_mapping = {v: k for k, v in topic_mapping.items()}
+
+        data['entity'].num_nodes = len(entity_mapping)  # Users do not have any features.
+        data['entity'].x = entity_x
+        data['entity'].net_x = entity_net_x
+        data['entity'].mapping = entity_mapping
+        data['entity'].rev_mapping = {v: k for k, v in entity_mapping.items()}
 
         if 'mes' not in self.root:
             data['venue'].num_nodes = len(venue_mapping)  # Users do not have any features.
             data['venue'].x = venue_x
+            data['venue'].net_x = venue_net_x
             data['venue'].mapping = venue_mapping
+            data['venue'].rev_mapping = {v: k for k, v in entity_mapping.items()}
 
             data['keyword'].num_nodes = len(keyword_mapping)  # Users do not have any features.
             data['keyword'].x = keyword_x
+            data['keyword'].net_x = keyword_net_x
             data['keyword'].mapping = keyword_mapping
+            data['keyword'].rev_mapping = {v: k for k, v in keyword_mapping.items()}
 
             data['organization'].num_nodes = len(orgs_mapping)  # Users do not have any features.
             data['organization'].x = orgs_x
+            data['organization'].net_x = orgs_net_x
             data['organization'].mapping = orgs_mapping
-
+            data['organization'].rev_mapping = {v: k for k, v in orgs_mapping.items()}
 
         # leave part of edges for message passing
         data['publication', 'cites', 'dataset'].edge_index_train = pd_edge_index_train
         data['publication', 'cites', 'dataset'].edge_label_index_train = pd_edge_index_train
-        cosine_label_ind = torch.cat([pd_edge_index_train,pd_edge_index_validation,pd_edge_index_test],dim=1)
-        data['publication', 'cites', 'dataset'].negative_edge_label_index_train = cosine_based_negative_samples(
-            cosine_label_ind, pd_edge_index_train, data['publication'].x, data['dataset'].x)
 
-        data['publication', 'cites', 'dataset'].edge_index_validation = pd_edge_index_train
-        data['publication', 'cites', 'dataset'].edge_label_index_validation = pd_edge_index_validation
-        data['publication', 'cites', 'dataset'].negative_edge_label_index_validation = cosine_based_negative_samples(
-            cosine_label_ind, pd_edge_index_validation, data['publication'].x, data['dataset'].x)
+        cosine_label_ind_trans = torch.cat([pd_edge_index_train, pd_edge_index_vali_trans, pd_edge_index_test_trans],
+                                           dim=1)
+        cosine_label_ind_semi = torch.cat([pd_edge_index_train, pd_edge_index_vali_trans, pd_edge_index_test_semi],
+                                          dim=1)
+        cosine_label_ind_ind = torch.cat([pd_edge_index_train, pd_edge_index_vali_trans, pd_edge_index_test_ind], dim=1)
+        data['publication', 'cites', 'dataset'].negative_edge_label_index_train_trans = cosine_based_negative_samples(
+            cosine_label_ind_trans, pd_edge_index_train, data['publication'].x, data['dataset'].x)
 
-        data['publication', 'cites', 'dataset'].edge_index_test = torch.cat(
-            [pd_edge_index_train, pd_edge_index_validation], dim=1)
-        data['publication', 'cites', 'dataset'].edge_label_index_test = pd_edge_index_test
-        data['publication', 'cites', 'dataset'].negative_edge_label_index_test = cosine_based_negative_samples(
-            cosine_label_ind, pd_edge_index_test,
-            data['publication'].x, data['dataset'].x)
+        data['publication', 'cites', 'dataset'].edge_index_validation_trans = pd_edge_index_train
+        data['publication', 'cites', 'dataset'].edge_index_test_trans = pd_edge_index_train
+        data['publication', 'cites', 'dataset'].edge_label_index_validation_trans = pd_edge_index_vali_trans
+        data['publication', 'cites', 'dataset'].edge_label_index_test_trans = pd_edge_index_test_trans
+
+        data['publication', 'cites', 'dataset'].edge_index_validation_semi = pd_edge_index_train
+        data['publication', 'cites', 'dataset'].edge_index_test_semi = pd_edge_index_train
+        data['publication', 'cites', 'dataset'].edge_label_index_test_semi = pd_edge_index_test_semi
+
+        data['publication', 'cites', 'dataset'].edge_index_validation_ind = pd_edge_index_train
+        data['publication', 'cites', 'dataset'].edge_index_test_ind = pd_edge_index_train
+        data['publication', 'cites', 'dataset'].edge_label_index_test_ind = pd_edge_index_test_ind
+
+        data[
+            'publication', 'cites', 'dataset'].negative_edge_label_index_validation_trans = cosine_based_negative_samples(
+            cosine_label_ind_trans, pd_edge_index_vali_trans, data['publication'].x, data['dataset'].x)
+
+        data['publication', 'cites', 'dataset'].negative_edge_label_index_test_trans = cosine_based_negative_samples(
+            cosine_label_ind_trans, pd_edge_index_test_trans, data['publication'].x,
+            data['dataset'].x)
+        data['publication', 'cites', 'dataset'].negative_edge_label_index_test_semi = cosine_based_negative_samples(
+            cosine_label_ind_semi, pd_edge_index_test_semi, data['publication'].x,
+            data['dataset'].x)
+        data['publication', 'cites', 'dataset'].negative_edge_label_index_test_ind = cosine_based_negative_samples(
+            cosine_label_ind_ind, pd_edge_index_test_ind, data['publication'].x,
+            data['dataset'].x)
 
         data['publication', 'cites', 'publication'].edge_index = pp_edge_index
         data['publication', 'cites', 'publication'].edge_label = pp_edge_label
@@ -370,6 +466,14 @@ class ScholarlyDataset(InMemoryDataset):
         data['dataset', 'hasauthor', 'author'].edge_label = da_edge_label
         data['dataset', 'cites', 'dataset'].edge_index = dd_edge_index
         data['dataset', 'cites', 'dataset'].edge_label = dd_edge_label
+        data['publication', 'hasentity', 'entity'].edge_index = pe_edge_index
+        data['publication', 'hasentity', 'entity'].edge_label = pe_edge_label
+        data['dataset', 'hasentity', 'entity'].edge_index = de_edge_index
+        data['dataset', 'hasentity', 'entity'].edge_label = de_edge_label
+        data['publication', 'hastopic', 'topic'].edge_index = pt_edge_index
+        data['publication', 'hastopic', 'topic'].edge_label = pt_edge_label
+        data['dataset', 'hastopic', 'topic'].edge_index = dt_edge_index
+        data['dataset', 'hastopic', 'topic'].edge_label = dt_edge_label
 
         if 'mes' not in self.root:
             data['publication', 'hasvenue', 'venue'].edge_index = pv_edge_index
@@ -383,247 +487,64 @@ class ScholarlyDataset(InMemoryDataset):
             data['dataset', 'hasorganization', 'organization'].edge_index = do_edge_index
             data['dataset', 'hasorganization', 'organization'].edge_label = do_edge_label
 
+        print(data)
+
         return data
 
-    def create_inductive_graph(self,full=False):
-        path = self.root.replace('_inductive_light','')
-        path = path.replace('_inductive_full','')
-        print(path)
-        path = path.strip()
-        publication_path = path + '/publications.csv'
-        dataset_path = path + '/datasets.csv'
-        authors_path = path + '/authors.csv'
+    def cosine_based_negative_samples(edge_index, edge_label_index, source_vectors, target_vectors, similar=False):
+        edges_all = torch.cat([edge_index, edge_label_index], dim=1)
+        edges_t = edges_all.t().tolist()
+        edges_t = list(set(tuple(e) for e in edges_t))
 
-        publication_x, publication_mapping = load_node_csv(publication_path, index_col='id',
-                                                           encoders={'content': ContentEncoder()})
-        dataset_x, dataset_mapping = load_node_csv(dataset_path, index_col='id',
-                                                   encoders={'content': ContentEncoder()})
-        authors_x, author_mapping = load_node_csv(authors_path, index_col='id',
-                                                  encoders={'fullname': KeywordEncoder()})
+        # print(source_vectors[0])
+        sources = list(set(edges_all[0].tolist()))
+        targets = list(set(edges_all[1].tolist()))
+        negative_edges = []
+        total_negative_samples = edge_label_index.size(1)
+        # print(len(sources))
+        # print(total_negative_samples)
+        # if len(sources) < total_negative_samples:
+        #     sources = sources + sources
+        # random_sources = random.sample(sources,total_negative_samples)
+        # print(f'total random negative edges {total_negative_samples}')
+        while len(negative_edges) < total_negative_samples:
+            s = random.sample(sources, 1)[0]
+            random.shuffle(targets)
+            targets_selected = random.sample(targets, 100)
+            targets_cosine = []
+            for j, t in enumerate(targets_selected):
+                # print('working on target: ', t, j)
+                if tuple([s, t]) not in edges_t:
+                    cosine = cosine_similarity(source_vectors[s], target_vectors[t])
+                    targets_cosine.append([t, cosine])
+                # else:
+                # print('FOUND',tuple([s, t]))
+            targets_cosine = sorted(targets_cosine, key=lambda t: t[1], reverse=similar)
+            # print(targets_cosine)
+            negative_edges.append([s, targets_cosine[0][0]])
+        negative_edges = torch.tensor(negative_edges).t()
+        # print(negative_edges)
+        # print(edges_t)
+        return negative_edges
 
-        pd_edges_path_train = path + '/pubdataedges_train_kcore_1.csv'
-        pd_edges_path_vali = path + '/pubdataedges_validation_kcore_1.csv'
-        pd_edges_path_test = path + '/pubdataedges_test_kcore_1.csv'
-        pp_edges_path = path + '/pubpubedges.csv'
-        dd_edges_path = path + '/datadataedges.csv'
-        pa_edges_path = path + '/pubauthedges.csv'
-        da_edges_path = path + '/dataauthedges.csv'
+    def random_negative_samples(edge_index, edge_label_index):
+        edges_t = edge_index.t().tolist()
+        edges_t = [tuple(t) for t in edges_t]
 
-
-        pd_edge_index_validation, pd_edge_label = load_edge_csv(
-            pd_edges_path_vali,
-            src_index_col='source',
-            src_mapping=publication_mapping,
-            dst_index_col='target',
-            dst_mapping=dataset_mapping,
-        )
-
-        pd_edge_index_test, pd_edge_label = load_edge_csv(
-            pd_edges_path_test,
-            src_index_col='source',
-            src_mapping=publication_mapping,
-            dst_index_col='target',
-            dst_mapping=dataset_mapping,
-        )
-        sources_to_exclude_from_training = list(set(pd_edge_index_validation[0].unique().tolist() + pd_edge_index_test[0].unique().tolist()))
-        targets_to_exclude_from_training = list(set(pd_edge_index_validation[1].unique().tolist() + pd_edge_index_test[1].unique().tolist()))
-        if full == False:
-            targets_to_exclude_from_training = []
-        print(sources_to_exclude_from_training)
-        print(len(sources_to_exclude_from_training))
-        print(targets_to_exclude_from_training)
-        print(len(targets_to_exclude_from_training))
-        pd_edge_index_train, pd_edge_label = load_edge_csv(
-            pd_edges_path_train,
-            src_index_col='source',
-            src_mapping=publication_mapping,
-            dst_index_col='target',
-            dst_mapping=dataset_mapping,
-
-            pubs_to_avoid=sources_to_exclude_from_training,
-            data_to_avoid=targets_to_exclude_from_training,
-        )
-
-        pp_edge_index_train, pp_edge_label_train = load_edge_csv(
-            pp_edges_path,
-            src_index_col='source',
-            src_mapping=publication_mapping,
-            dst_index_col='target',
-            dst_mapping=publication_mapping,
-            pubs_to_avoid=sources_to_exclude_from_training,
-            data_to_avoid=targets_to_exclude_from_training,
-        )
-        pp_edge_index_test, pp_edge_label_test = load_edge_csv(
-            pp_edges_path,
-            src_index_col='source',
-            src_mapping=publication_mapping,
-            dst_index_col='target',
-            dst_mapping=publication_mapping,
-        )
-
-        dd_edge_index_train, dd_edge_label_train = load_edge_csv(
-            dd_edges_path,
-            src_index_col='source',
-            src_mapping=dataset_mapping,
-            dst_index_col='target',
-            dst_mapping=dataset_mapping,
-            pubs_to_avoid=sources_to_exclude_from_training,
-            data_to_avoid=targets_to_exclude_from_training,
-        )
-        dd_edge_index_test, dd_edge_label_test = load_edge_csv(
-            dd_edges_path,
-            src_index_col='source',
-            src_mapping=dataset_mapping,
-            dst_index_col='target',
-            dst_mapping=dataset_mapping,
-        )
-        pa_edge_index_test, pa_edge_label_test = load_edge_csv(
-            pa_edges_path,
-            src_index_col='source',
-            src_mapping=publication_mapping,
-            dst_index_col='target',
-            dst_mapping=author_mapping,
-        )
-        pa_edge_index_train, pa_edge_label_train = load_edge_csv(
-            pa_edges_path,
-            src_index_col='source',
-            src_mapping=publication_mapping,
-            dst_index_col='target',
-            dst_mapping=author_mapping,
-            pubs_to_avoid=sources_to_exclude_from_training,
-            data_to_avoid=targets_to_exclude_from_training,
-        )
-        da_edge_index_train, da_edge_label_train = load_edge_csv(
-            da_edges_path,
-            src_index_col='source',
-            src_mapping=dataset_mapping,
-            dst_index_col='target',
-            dst_mapping=author_mapping,
-            pubs_to_avoid=sources_to_exclude_from_training,
-            data_to_avoid=targets_to_exclude_from_training,
-        )
-        da_edge_index_test, da_edge_label_test = load_edge_csv(
-            da_edges_path,
-            src_index_col='source',
-            src_mapping=dataset_mapping,
-            dst_index_col='target',
-            dst_mapping=author_mapping,
-        )
-
-        data = HeteroData()
-        data['publication'].x = publication_x
-        data['publication'].mapping = publication_mapping
-        data['publication'].num_nodes = len(publication_mapping)  # Users do not have any features.
-
-        data['dataset'].num_nodes = len(dataset_mapping)  # Users do not have any features.
-        data['dataset'].x = dataset_x
-        data['dataset'].mapping = dataset_mapping
-
-        data['author'].num_nodes = len(author_mapping)  # Users do not have any features.
-        data['author'].x = authors_x
-        data['author'].mapping = author_mapping
-        # leave part of edges for message passing
-        data['publication', 'cites', 'dataset'].edge_index_train = pd_edge_index_train
-        data['publication', 'cites', 'dataset'].edge_label_index_train = pd_edge_index_train
-        cosine_label_ind = torch.cat([pd_edge_index_train, pd_edge_index_validation, pd_edge_index_test], dim=1)
-        data['publication', 'cites', 'dataset'].negative_edge_label_index_train = cosine_based_negative_samples(
-            cosine_label_ind, pd_edge_index_train, data['publication'].x, data['dataset'].x,pub_to_avoid=sources_to_exclude_from_training,data_to_avoid=targets_to_exclude_from_training)
-
-        data['publication', 'cites', 'dataset'].edge_index_validation = pd_edge_index_train
-        data['publication', 'cites', 'dataset'].edge_label_index_validation = pd_edge_index_validation
-        data['publication', 'cites', 'dataset'].negative_edge_label_index_validation = cosine_based_negative_samples(
-            cosine_label_ind, pd_edge_index_validation, data['publication'].x, data['dataset'].x)
-
-        data['publication', 'cites', 'dataset'].edge_index_test = torch.cat(
-            [pd_edge_index_train, pd_edge_index_validation], dim=1)
-        data['publication', 'cites', 'dataset'].edge_label_index_test = pd_edge_index_test
-        data['publication', 'cites', 'dataset'].negative_edge_label_index_test = cosine_based_negative_samples(
-            cosine_label_ind, pd_edge_index_test,
-            data['publication'].x, data['dataset'].x)
-
-        data['publication', 'cites', 'publication'].edge_index_train = pp_edge_index_train
-        data['publication', 'cites', 'publication'].edge_label_train = pp_edge_label_train
-        data['publication', 'hasauthor', 'author'].edge_index_train = pa_edge_index_train
-        data['publication', 'hasauthor', 'author'].edge_label_train = pa_edge_label_train
-        data['dataset', 'hasauthor', 'author'].edge_index_train = da_edge_index
-        data['dataset', 'hasauthor', 'author'].edge_label_train = da_edge_label
-        data['dataset', 'cites', 'dataset'].edge_index_train = dd_edge_index_train
-        data['dataset', 'cites', 'dataset'].edge_label_train = dd_edge_label_train
-        data['publication', 'cites', 'publication'].edge_index_test = pp_edge_index_test
-        data['publication', 'cites', 'publication'].edge_label_test = pp_edge_label_test
-        data['publication', 'hasauthor', 'author'].edge_index_test = pa_edge_index_test
-        data['publication', 'hasauthor', 'author'].edge_label_test = pa_edge_label_test
-        data['dataset', 'hasauthor', 'author'].edge_index_test = da_edge_index_test
-        data['dataset', 'hasauthor', 'author'].edge_label_test = da_edge_label_test
-        data['dataset', 'cites', 'dataset'].edge_index_test = dd_edge_index_test
-        data['dataset', 'cites', 'dataset'].edge_label_test = dd_edge_label_test
-        return data
-
-
-def cosine_based_negative_samples(edge_index, edge_label_index, source_vectors, target_vectors, similar=False,pub_to_avoid=[],data_to_avoid=[]):
-    edges_all = torch.cat([edge_index, edge_label_index], dim=1)
-    edges_t = edges_all.t().tolist()
-    edges_t = list(set(tuple(e) for e in edges_t))
-
-    # print(source_vectors[0])
-    sources = list(set(edges_all[0].tolist()))
-    print(len(sources))
-    sources = [s for s in sources if s not in pub_to_avoid]
-    print(len(sources))
-    targets = list(set(edges_all[1].tolist()))
-    print(len(targets))
-    targets = [s for s in targets if s not in data_to_avoid]
-    print(len(targets))
-
-    negative_edges = []
-    total_negative_samples = edge_label_index.size(1)
-    # print(len(sources))
-    # print(total_negative_samples)
-    # if len(sources) < total_negative_samples:
-    #     sources = sources + sources
-    # random_sources = random.sample(sources,total_negative_samples)
-    # print(f'total random negative edges {total_negative_samples}')
-    while len(negative_edges) < total_negative_samples:
-        s = random.sample(sources, 1)[0]
-        random.shuffle(targets)
-        targets_selected = random.sample(targets, 100)
-        targets_cosine = []
-        for j, t in enumerate(targets_selected):
-            # print('working on target: ', t, j)
-            if tuple([s, t]) not in edges_t:
-                cosine = cosine_similarity(source_vectors[s], target_vectors[t])
-                targets_cosine.append([t, cosine])
-            # else:
-            # print('FOUND',tuple([s, t]))
-        targets_cosine = sorted(targets_cosine, key=lambda t: t[1], reverse=similar)
-        # print(targets_cosine)
-        negative_edges.append([s, targets_cosine[0][0]])
-    negative_edges = torch.tensor(negative_edges).t()
-    # print(negative_edges)
-    # print(edges_t)
-    return negative_edges
-
-
-def random_negative_samples(edge_index, edge_label_index):
-    edges_t = edge_index.t().tolist()
-    edges_t = [tuple(t) for t in edges_t]
-
-    sources = edge_index[0].tolist()
-    targets = edge_index[1].tolist()
-    new_edges_t = torch.tensor([[], []])
-    found = False
-    while not found:
-        new_sources = random.sample(sources, edge_label_index.size(1))
-        new_targets = random.sample(targets, edge_label_index.size(1))
-        new_edges_t = torch.tensor([new_sources, new_targets]).t().tolist()
-        new_edges_t = [tuple(t) for t in new_edges_t]
-        if set(edges_t).isdisjoint(new_edges_t):
-            found = True
-    new_edges = torch.tensor([list(e) for e in new_edges_t])
-    new_edges = new_edges.t()
-    return new_edges
-
-
+        sources = edge_index[0].tolist()
+        targets = edge_index[1].tolist()
+        new_edges_t = torch.tensor([[], []])
+        found = False
+        while not found:
+            new_sources = random.sample(sources, edge_label_index.size(1))
+            new_targets = random.sample(targets, edge_label_index.size(1))
+            new_edges_t = torch.tensor([new_sources, new_targets]).t().tolist()
+            new_edges_t = [tuple(t) for t in new_edges_t]
+            if set(edges_t).isdisjoint(new_edges_t):
+                found = True
+        new_edges = torch.tensor([list(e) for e in new_edges_t])
+        new_edges = new_edges.t()
+        return new_edges
 
 
 def get_results_to_rerank(dataset,train_data,deep_rerank=20,topk=10):
@@ -663,49 +584,28 @@ def get_results_to_rerank(dataset,train_data,deep_rerank=20,topk=10):
 
     return rerankers
 
-
-def check(root):
-    data = ScholarlyDataset(root=root)
-    train_data = data[0]
-    edge_index = train_data['publication','cites','dataset'].edge_index_train.t().tolist()
-    label_index_trans = train_data['publication','cites','dataset'].edge_label_index_test_trans.t().tolist()
-    label_index_semi = train_data['publication','cites','dataset'].edge_label_index_test_semi.t().tolist()
-    label_index_ind = train_data['publication','cites','dataset'].edge_label_index_test_ind.t().tolist()
-    print(len(list(set([tuple(r) for r in edge_index]).intersection(set([tuple(r) for r in label_index_trans])))))
-    print(len(list(set([tuple(r) for r in edge_index]).intersection(set([tuple(r) for r in label_index_semi])))))
-    print(len(list(set([tuple(r) for r in edge_index]).intersection(set([tuple(r) for r in label_index_ind])))))
-
-
-
-def load_data(root,indices=False):
-    def filter(edge_index,publications=False,datasets=False):
-        edge_index = edge_index.t().tolist()
-        new_ei = []
-        for i in edge_index:
-            if publications and not datasets and i[0] not in publications:
-                new_ei.append(i)
-            elif datasets and publications and i[0] not in publications and i[1] not in datasets:
-                new_ei.append(i)
-            elif not publications and datasets and i[1] not in datasets:
-                new_ei.append(i)
-        return torch.tensor(new_ei).t()
+def load_transductive_data(root,indices=False):
+    print(f'root {root}')
 
     def remove_nodes(train_data):
 
-        del train_data['publication', 'hasentity', 'entity']
-        del train_data['dataset', 'hasentity', 'entity']
-        del train_data['entity']
-        del train_data['publication', 'hastopic', 'topic']
-        del train_data['dataset', 'hastopic', 'topic']
-        del train_data['topic']
+        # del train_data['publication', 'hasentity', 'entity']
+        # del train_data['dataset', 'hasentity', 'entity']
+        # del train_data['entity']
+        # del train_data['publication', 'hastopic', 'topic']
+        # del train_data['dataset', 'hastopic', 'topic']
+        # del train_data['topic']
 
-        if indices != [] and indices:
-            train_data['dataset'].x[indices, :] = 1.0
+        # del train_data['publication', 'hasentity', 'entity']
+        # del train_data['dataset', 'hasentity', 'entity']
+        # del train_data['entity']
+        # del train_data['publication', 'hastopic', 'topic']
+        # del train_data['dataset', 'hastopic', 'topic']
+        # del train_data['topic']
+        # del train_data['publication', 'hasauthor', 'author']
+        # del train_data['dataset', 'hasauthor', 'author']
+        # del train_data['author']
 
-        train_data['publication'].x = torch.cat([train_data['publication'].x, train_data['publication'].net_x], dim=1)
-        train_data['dataset'].x = torch.cat([train_data['dataset'].x, train_data['dataset'].net_x], dim=1)
-        # print(train_data['publication'].x.shape)
-        # print(train_data['dataset'].x.shape)
         if 'pubmed' in root:
             del train_data['publication', 'hasauthor', 'author']
             del train_data['dataset', 'hasauthor', 'author']
@@ -718,13 +618,30 @@ def load_data(root,indices=False):
             del train_data['publication', 'haskeyword', 'keyword']
             del train_data['dataset', 'haskeyword', 'keyword']
             del train_data['keyword']
+            del train_data['publication', 'hasentity', 'entity']
+            del train_data['dataset', 'hasentity', 'entity']
+            del train_data['entity']
+            del train_data['publication', 'hastopic', 'topic']
+            del train_data['dataset', 'hastopic', 'topic']
+            del train_data['topic']
+        else:
+            train_data['author'].x = torch.cat([train_data['author'].x, train_data['author'].net_x], dim=1)
+            #train_data['entity'].x = torch.cat([train_data['entity'].x, train_data['entity'].net_x], dim=1)
+            #train_data['topic'].x = torch.cat([train_data['topic'].x, train_data['topic'].net_x], dim=1)
+        train_data['publication'].x = torch.cat([train_data['publication'].x, train_data['publication'].net_x], dim=1)
+        train_data['dataset'].x = torch.cat([train_data['dataset'].x, train_data['dataset'].net_x], dim=1)
+        del train_data['publication'].net_x
+        del train_data['publication'].mapping
+        del train_data['publication'].rev_mapping
+        del train_data['dataset'].net_x
+        del train_data['dataset'].mapping
+        del train_data['dataset'].rev_mapping
+
         return train_data
 
     data = ScholarlyDataset(root=root)
     train_data = data[0]
     train_data = remove_nodes(train_data)
-
-
 
     train_data['publication', 'cites', 'dataset'].edge_index = train_data[
         'publication', 'cites', 'dataset'].edge_index_train
@@ -737,85 +654,216 @@ def load_data(root,indices=False):
     validation_data = remove_nodes(validation_data)
 
     validation_data['publication', 'cites', 'dataset'].edge_index = validation_data[
-        'publication', 'cites', 'dataset'].edge_label_index_validation_trans
+        'publication', 'cites', 'dataset'].edge_index_train
     validation_data['publication', 'cites', 'dataset'].edge_label_index = torch.cat(
         [validation_data['publication', 'cites', 'dataset'].edge_label_index_validation_trans,
          validation_data['publication', 'cites', 'dataset'].negative_edge_label_index_validation_trans], dim=1)
 
     data = ScholarlyDataset(root)
     test_data = data[0]
-    test_data_trans = remove_nodes(test_data)
-    data = ScholarlyDataset(root)
-    test_data = data[0]
-    test_data_semi = remove_nodes(test_data)
-    data = ScholarlyDataset(root)
-    test_data = data[0]
-    test_data_ind = remove_nodes(test_data)
+    test_data = remove_nodes(test_data)
 
-    test_data_trans['publication', 'cites', 'dataset'].edge_index = test_data_trans['publication', 'cites', 'dataset'].edge_index_train
-    test_data_trans['publication', 'cites', 'dataset'].edge_label_index = torch.cat(
-        [test_data_trans['publication', 'cites', 'dataset'].edge_label_index_test_trans,
-         test_data_trans['publication', 'cites', 'dataset'].negative_edge_label_index_test_trans], dim=1)
+    test_data['publication', 'cites', 'dataset'].edge_index = test_data['publication', 'cites', 'dataset'].edge_index_train
+    test_data['publication', 'cites', 'dataset'].edge_label_index = torch.cat(
+        [test_data['publication', 'cites', 'dataset'].edge_label_index_test_trans,
+         test_data['publication', 'cites', 'dataset'].negative_edge_label_index_test_trans], dim=1)
 
-    test_data_ind['publication', 'cites', 'dataset'].edge_index = test_data_semi[
-        'publication', 'cites', 'dataset'].edge_index_train
-    test_data_ind['publication', 'cites', 'dataset'].edge_label_index = torch.cat(
-        [test_data_ind['publication', 'cites', 'dataset'].edge_label_index_test_ind,
-         test_data_ind['publication', 'cites', 'dataset'].negative_edge_label_index_test_ind], dim=1)
-    to_remove_s = test_data_ind['publication', 'cites', 'dataset'].edge_label_index_test_ind[0].tolist()
-    to_remove_t = test_data_ind['publication', 'cites', 'dataset'].edge_label_index_test_ind[1].tolist()
-    for edge_type, edge_index in validation_data.edge_index_dict.items():
-        print(edge_type)
-        if edge_type[0] == 'publication':
-            edge_index = filter(edge_index,to_remove_s,False)
-        if edge_type[1] == 'publication':
-            edge_index = filter(edge_index,False,to_remove_s)
-        if edge_type[0] == 'dataset':
-            edge_index = filter(edge_index, to_remove_t, False)
-        if edge_type[1] == 'dataset':
-            edge_index = filter(edge_index, False, to_remove_t)
-        validation_data[edge_type].edge_index = edge_index
+    return train_data,validation_data,test_data
+
+def load_inductive_data(root,inductive_type,indices=False):
+    print(f'root {root}')
+    def remove_nodes(train_data):
+
+
+        # del train_data['publication', 'hasentity', 'entity']
+        # del train_data['dataset', 'hasentity', 'entity']
+        # del train_data['entity']
+        # del train_data['publication', 'hastopic', 'topic']
+        # del train_data['dataset', 'hastopic', 'topic']
+        # del train_data['topic']
+        # del train_data['publication', 'hasauthor', 'author']
+        # del train_data['dataset', 'hasauthor', 'author']
+        # del train_data['author']
+
+
+
+        if 'pubmed' in root:
+            del train_data['publication', 'hasauthor', 'author']
+            del train_data['dataset', 'hasauthor', 'author']
+            del train_data['author']
+            del train_data['publication', 'hasorganization', 'organization']
+            del train_data['dataset', 'hasorganization', 'organization']
+            del train_data['organization']
+            del train_data['publication', 'hasvenue', 'venue']
+            del train_data['venue']
+            del train_data['publication', 'haskeyword', 'keyword']
+            del train_data['dataset', 'haskeyword', 'keyword']
+            del train_data['keyword']
+            del train_data['publication', 'hasentity', 'entity']
+            del train_data['dataset', 'hasentity', 'entity']
+            del train_data['entity']
+            del train_data['publication', 'hastopic', 'topic']
+            del train_data['dataset', 'hastopic', 'topic']
+            del train_data['topic']
+        else:
+            train_data['author'].x = torch.cat([train_data['author'].x, train_data['author'].net_x], dim=1)
+            #train_data['entity'].x = torch.cat([train_data['entity'].x, train_data['entity'].net_x], dim=1)
+            #train_data['topic'].x = torch.cat([train_data['topic'].x, train_data['topic'].net_x], dim=1)
+
+        train_data['publication'].x = torch.cat([train_data['publication'].x, train_data['publication'].net_x], dim=1)
+        train_data['dataset'].x = torch.cat([train_data['dataset'].x, train_data['dataset'].net_x], dim=1)
+        del train_data['publication'].net_x
+        del train_data['publication'].mapping
+        del train_data['publication'].rev_mapping
+        del train_data['dataset'].net_x
+        del train_data['dataset'].mapping
+        del train_data['dataset'].rev_mapping
+        return train_data
+
+
+
+    data = ScholarlyDataset(root=root)
+    train_data = data[0]
+    train_data = remove_nodes(train_data)
+
+
+
+    edge_index_train = train_data['publication', 'cites', 'dataset'].edge_index_train
+    negative_edge_index_train = train_data['publication', 'cites', 'dataset'].negative_edge_label_index_train_trans
+    edge_index_validation = train_data['publication', 'cites', 'dataset'].edge_label_index_validation_trans
+    negative_edge_index_validation = train_data['publication', 'cites', 'dataset'].negative_edge_label_index_train_trans
+    edge_index_test = train_data['publication', 'cites', 'dataset'].edge_label_index_test_ind
+
+    if inductive_type == 'light':
+        edge_index_test = train_data['publication', 'cites', 'dataset'].edge_label_index_test_semi
+
+    to_avoid_sources_test = [x[0] for x in edge_index_test.t().tolist()]
+    to_avoid_sources_vali = [x[0] for x in edge_index_validation.t().tolist()]
+    to_avoid_dsts_test = [x[1] for x in edge_index_test.t().tolist()]
+    to_avoid_dsts_vali = [x[1] for x in edge_index_validation.t().tolist()]
+    filtered_edge_index_train = []
+    filtered_edge_index_train_neg = []
+    filtered_edge_index_vali = []
+    filtered_edge_index_vali_neg = []
+    if inductive_type == 'full':
+        for x in edge_index_train.t().tolist():
+            if x[0] not in to_avoid_sources_test + to_avoid_sources_vali and x[1] not in to_avoid_dsts_test + to_avoid_dsts_vali:
+                filtered_edge_index_train.append(x)
+        for x in edge_index_validation.t().tolist():
+            if x[0] not in to_avoid_sources_test and x[1] not in to_avoid_dsts_test:
+                filtered_edge_index_vali.append(x)
+        for x in negative_edge_index_train.t().tolist():
+            if x[0] not in to_avoid_sources_test + to_avoid_sources_vali and x[1] not in to_avoid_dsts_test + to_avoid_dsts_vali:
+                filtered_edge_index_train_neg.append(x)
+        for x in negative_edge_index_validation.t().tolist():
+            if x[0] not in to_avoid_sources_test and x[1] not in to_avoid_dsts_test:
+                filtered_edge_index_vali_neg.append(x)
+
+    if inductive_type == 'light':
+        for x in edge_index_train.t().tolist():
+            if x[0] not in to_avoid_sources_test + to_avoid_sources_vali:
+                filtered_edge_index_train.append(x)
+        for x in edge_index_validation.t().tolist():
+            if x[0] not in to_avoid_sources_test:
+                filtered_edge_index_vali.append(x)
+        for x in negative_edge_index_train.t().tolist():
+            if x[0] not in to_avoid_sources_test + to_avoid_sources_vali:
+                filtered_edge_index_train_neg.append(x)
+        for x in negative_edge_index_validation.t().tolist():
+            if x[0] not in to_avoid_sources_test:
+                filtered_edge_index_vali_neg.append(x)
+
+
+    negative_edge_index_validation = torch.tensor(filtered_edge_index_vali_neg).t()
+    negative_edge_index_train = torch.tensor(filtered_edge_index_train_neg).t()
+    edge_index_train = torch.tensor(filtered_edge_index_train).t()
+    edge_index_validation = torch.tensor(filtered_edge_index_vali).t()
+
+    min_train = min([edge_index_train.size(1),negative_edge_index_train.size(1)])
+    edge_index_train = edge_index_train[:,:min_train]
+    negative_edge_index_train = negative_edge_index_train[:,:min_train]
+
+    train_data['publication', 'cites', 'dataset'].edge_index_train = edge_index_train
+    train_data['publication', 'cites', 'dataset'].edge_label_index_train = edge_index_train
+    train_data['publication', 'cites', 'dataset'].negative_edge_label_index_train = negative_edge_index_train
+    train_data['publication', 'cites', 'dataset'].edge_index = edge_index_train
+    train_data['publication', 'cites', 'dataset'].edge_label_index = torch.cat([edge_index_train,negative_edge_index_train], dim=1)
+
 
     for edge_type, edge_index in train_data.edge_index_dict.items():
-        print(edge_type)
-        if edge_type[0] == 'publication':
-            edge_index = filter(edge_index,to_remove_s,False)
-        if edge_type[1] == 'publication':
-            edge_index = filter(edge_index,False,to_remove_s)
-        if edge_type[0] == 'dataset':
-            edge_index = filter(edge_index, to_remove_t, False)
-        if edge_type[1] == 'dataset':
-            edge_index = filter(edge_index, False, to_remove_t)
+        edge_index = train_data[edge_type].edge_index
+        edge_index = edge_index.t().tolist()
+        edge_index = [x for x in edge_index if x[0] not in to_avoid_sources_test+to_avoid_sources_vali]
+        if inductive_type == 'full' and 'author' not in edge_type:
+            edge_index = [x for x in edge_index if x[1] not in to_avoid_dsts_test + to_avoid_dsts_vali]
+
+        edge_index = torch.tensor(edge_index).t()
         train_data[edge_type].edge_index = edge_index
 
+    data = ScholarlyDataset(root=root)
+    validation_data = data[0]
+    validation_data = remove_nodes(validation_data)
+    min_vali = min([edge_index_validation.size(1),negative_edge_index_validation.size(1)])
+    negative_edge_index_validation = negative_edge_index_validation[:,:min_vali]
+    edge_index_validation = edge_index_validation[:,:min_vali]
 
-    test_data_semi['publication', 'cites', 'dataset'].edge_index = test_data_semi[
-        'publication', 'cites', 'dataset'].edge_index_train
-    test_data_semi['publication', 'cites', 'dataset'].edge_label_index = torch.cat(
-        [test_data_semi['publication', 'cites', 'dataset'].edge_label_index_test_semi,
-         test_data_semi['publication', 'cites', 'dataset'].negative_edge_label_index_test_semi], dim=1)
-    to_remove_s = test_data_semi['publication', 'cites', 'dataset'].edge_label_index_test_semi[0].tolist()
-    to_remove_t = []
+    validation_data['publication', 'cites', 'dataset'].negative_edge_label_index_validation = negative_edge_index_validation
+    validation_data['publication', 'cites', 'dataset'].edge_label_index_validation = edge_index_validation
+    validation_data['publication', 'cites', 'dataset'].edge_index = edge_index_train
+    validation_data['publication', 'cites', 'dataset'].edge_label_index = torch.cat(
+        [validation_data['publication', 'cites', 'dataset'].edge_label_index_validation,
+         validation_data['publication', 'cites', 'dataset'].negative_edge_label_index_validation], dim=1)
+
     for edge_type, edge_index in validation_data.edge_index_dict.items():
-        if edge_type[0] == 'publication':
-            edge_index = filter(edge_index, to_remove_s, False)
-        if edge_type[1] == 'publication':
-            edge_index = filter(edge_index, False, to_remove_s)
+        edge_index = validation_data[edge_type].edge_index
+        edge_index = edge_index.t().tolist()
+        edge_index = [x for x in edge_index if x[0] not in to_avoid_sources_vali]
+        if inductive_type == 'full':
+            edge_index = [x for x in edge_index if x[1] not in to_avoid_dsts_vali]
+
+        edge_index = torch.tensor(edge_index).t()
         validation_data[edge_type].edge_index = edge_index
 
-    for edge_type, edge_index in train_data.edge_index_dict.items():
-        if edge_type[0] == 'publication':
-            edge_index = filter(edge_index, to_remove_s, False)
-        if edge_type[1] == 'publication':
-            edge_index = filter(edge_index, False, to_remove_s)
-        train_data[edge_type].edge_index = edge_index
+
+    data = ScholarlyDataset(root=root)
+    test_data = data[0]
+    test_data = remove_nodes(test_data)
+
+    test_data['publication', 'cites', 'dataset'].edge_index = edge_index_train
+    test_data['publication', 'cites', 'dataset'].edge_label_index = torch.cat(
+        [test_data['publication', 'cites', 'dataset'].edge_label_index_test_ind,
+         test_data['publication', 'cites', 'dataset'].negative_edge_label_index_test_ind], dim=1)
+    if inductive_type == 'light':
+        test_data['publication', 'cites', 'dataset'].edge_label_index = torch.cat(
+            [test_data['publication', 'cites', 'dataset'].edge_label_index_test_semi,
+             test_data['publication', 'cites', 'dataset'].negative_edge_label_index_test_semi], dim=1)
 
 
 
 
+    return train_data,validation_data,test_data
 
-    return train_data,validation_data,test_data_trans, test_data_semi, test_data_ind
 
+
+# if __name__ == '__main__':
+#     dataset = 'mes'
+#     root = f'./datasets/{dataset}/split_transductive/train'
+#     data = ScholarlyDataset(root=root)
+#     train_data = data[0]
+#     print(train_data)
+#     print('\n')
+#     root = f'./datasets/{dataset}/split_transductive/train_inductive_light'
+#     data = ScholarlyDataset(root=root)
+#     train_data = data[0]
+#     print(train_data)
+#     print('\n')
+#     root = f'./datasets/{dataset}/split_transductive/train_inductive_full'
+#     data = ScholarlyDataset(root=root)
+#     train_data = data[0]
+#     print(train_data)
+#     print('\n')
+
+    # dataset
 
 
 

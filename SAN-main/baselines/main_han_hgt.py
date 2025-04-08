@@ -71,7 +71,6 @@ def ndcg_at_k(true_labels, predictions, k):
 
 
 parser.add_argument("-model", default='han')
-parser.add_argument("-test",action='store_true')
 parser.add_argument("-no_metadata",type=int,default=0)
 parser.add_argument("-dataset",default='mes', choices=['mes', 'pubmed'],
                     type=str)
@@ -79,12 +78,16 @@ parser.add_argument("-seed", default=42, type=int)
 parser.add_argument("-layer", default=1, type=int)
 parser.add_argument("-heads", default=8, type=int)
 parser.add_argument("-channels", default=128, type=int)
-parser.add_argument("-lr", default=0.00001, type=float)  # gat = 0.001,200 #sage = 0.0001, 100
 parser.add_argument("-epochs", default=100)
 parser.add_argument("-ind_light", action="store_true")
 parser.add_argument("-ind_full", action="store_true")
 parser.add_argument("-iteration", default=0, type=int)
 
+parser.add_argument("-lr", default=0.00001, type=float) # gat = 0.001,200 #sage = 0.0001, 100
+parser.add_argument("-inductive_type",default='trans', choices=['trans', 'light', 'full'],
+                    type=str)
+parser.add_argument("-split",type=float,default=0)
+parser.add_argument("-test",action='store_true')
 # args = parser.parse_args()
 def main(args,indices = []):
 
@@ -98,15 +101,9 @@ def main(args,indices = []):
     layer = args.layer
     heads = args.heads
     epochs = args.epochs
-    iteration = args.iteration
-    inductive = 'transductive'
-    if ind_light:
-        inductive = 'light'
-    elif ind_full:
-        inductive = 'full'
+    ind_light = args.inductive_type == 'light'
+    ind_full = args.inductive_type == 'full'
 
-    stringa = f'unique_{iteration}_{inductive}_{dataset}_{lr}_{epochs}_{heads}_{ch}_{layer}_{args.no_metadata}'
-    f = open(f'baselines/sage/results/{args.model}/{stringa}.txt','w')
 
     seed_everything(seed)
 
@@ -115,15 +112,23 @@ def main(args,indices = []):
     root = f'./datasets/{dataset}/split_transductive/train'
     data = ScholarlyDataset(root=root)
     train_data = data[0]
-    dataset_num = train_data['dataset'].x.shape[0]
 
-    train_data, validation_data, test_data_trans, test_data_semi, test_data_ind = loader.load_data(root, indices)
+    root = f'./datasets/{dataset}/split_transductive/train'
+
+    train_data, validation_data, test_data = loader.load_transductive_data(root, indices)
+    if ind_full:
+        train_data, validation_data, test_data = loader.load_inductive_data(root, 'full',indices)
+    elif ind_light:
+        train_data, validation_data, test_data = loader.load_inductive_data(root, 'light',indices)
+
+    if args.split:
+        number_perm = int((args.split / 100) * dataset_num)
+        indices = random.sample(range(dataset_num), number_perm)
+        test_data['dataset'].x[indices, :] = 1.0
 
     train_data.to(device)
     validation_data.to(device)
-    test_data_trans.to(device)
-    test_data_semi.to(device)
-    test_data_ind.to(device)
+    test_data.to(device)
     num_publications = train_data['publication'].num_nodes
     num_dataset = train_data['dataset'].num_nodes
 
@@ -148,6 +153,22 @@ def main(args,indices = []):
 
 
     elif args.model == 'hgt':
+        dict_meta = train_data.metadata()
+
+        # class HGT(torch.nn.Module):
+        #     def __init__(self, hidden_channels, out_channels, num_heads, num_layers):
+        #         super().__init__()
+        #         self.convs = torch.nn.ModuleList()
+        #         for _ in range(num_layers):
+        #             self.convs.append(HGTConv(hidden_channels, hidden_channels, dict_meta, num_heads))
+        #         self.lin = torch.nn.Linear(hidden_channels, out_channels)
+        #
+        #     def forward(self, x_dict, edge_index_dict):
+        #         for conv in self.convs:
+        #             x_dict = conv(x_dict, edge_index_dict)
+        #         return self.lin(x_dict['publication']),self.lin(x_dict['dataset'])
+
+        # Inicializando modelo e treinamento
         class HGT(torch.nn.Module):
             def __init__(self, hidden_channels, out_channels, num_heads, num_layers, data):
                 super().__init__()
@@ -166,7 +187,6 @@ def main(args,indices = []):
                 self.lin_data = Linear(hidden_channels, out_channels)
 
             def forward(self, x_dict, edge_index_dict):
-
                 x_dict = {
                     node_type: self.lin_dict[node_type](x).relu_()
                     for node_type, x in x_dict.items()
@@ -178,6 +198,7 @@ def main(args,indices = []):
                 return self.lin_paper(x_dict['publication']),self.lin_data(x_dict['dataset'])
 
         model = HGT(hidden_channels=ch, out_channels=ch, num_heads=heads, num_layers=layer,data=train_data).to(device)
+        #model = HGT(hidden_channels=64, out_channels=10, num_heads=2, num_layers=2).to(device)
 
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -216,53 +237,39 @@ def main(args,indices = []):
 
 
     @torch.no_grad()
-    def test(test_data,type='tran'):
+    def test(test_data):
         model.eval()
         device = 'cpu'
         model.to(device)
         data = test_data.to(device)
         test_data.to(device)
         h_paper,h_data = model(data.x_dict, data.edge_index_dict)
-        if type == 'trans':
-            h_src = h_paper[data['publication', 'cites', 'dataset'].edge_label_index_test_trans[0]]
-            h_dst = h_data[data['publication', 'cites', 'dataset'].edge_label_index_test_trans[1]]
-        elif type == 'ind':
-            h_src = h_paper[data['publication', 'cites', 'dataset'].edge_label_index_test_ind[0]]
-            h_dst = h_data[data['publication', 'cites', 'dataset'].edge_label_index_test_ind[1]]
-        elif type == 'semi':
-            h_src = h_paper[data['publication', 'cites', 'dataset'].edge_label_index_test_semi[0]]
-            h_dst = h_data[data['publication', 'cites', 'dataset'].edge_label_index_test_semi[1]]
 
         h_src = h_paper[data['publication','cites','dataset'].edge_label_index[0]]
         h_dst = h_data[data['publication','cites','dataset'].edge_label_index[1]]
         y_true_test = np.array([1] * int(data['publication','cites','dataset'].edge_label_index.size(1) / 2) + [0] * int(data['publication','cites','dataset'].edge_label_index.size(1) / 2))
         y_true_test = torch.tensor(y_true_test).to(device)
 
-        link_pred = (h_src * h_dst).sum(dim=-1)  # Inner product.
+        link_pred = torch.sigmoid((h_src * h_dst).sum(dim=-1))  # Inner product.
 
         roc_auc = roc_auc_score(y_true_test.cpu().numpy().astype(numpy.float32),
                                 link_pred.cpu().numpy().astype(numpy.float32))
-        ap = average_precision_score(y_true_test.cpu().numpy().astype(numpy.float32),
-                                     link_pred.cpu().numpy().astype(numpy.float32))
-        line = f'AUC {roc_auc} AP {ap}'
-        
-        f.write(line)
         threshold = 0.5
-
         # Converte i valori continui in predizioni binarie
         predicted_probs = link_pred.cpu().numpy().astype(numpy.float32).tolist()
+
         predicted_labels = [1 if prob >= threshold else 0 for prob in predicted_probs]
+
+
         f1 = f1_score(y_true_test.cpu().numpy().astype(numpy.float32), predicted_labels)
-
-        if type == 'trans':
+        line = f'AUC {roc_auc} F1 {f1}'
+        #return roc_auc,f1
+        if args.inductive_type == 'trans':
             edge_label_index_positive = test_data['publication', 'cites', 'dataset'].edge_label_index_test_trans
-        elif type == 'ind':
-            edge_label_index_positive = test_data['publication', 'cites', 'dataset'].edge_label_index_test_ind
-        elif type == 'semi':
+        if args.inductive_type == 'light':
             edge_label_index_positive = test_data['publication', 'cites', 'dataset'].edge_label_index_test_semi
-
-
-        edge_label_index_positive = edge_label_index_positive[:,:int(edge_label_index_positive.size(1)/2)]
+        if args.inductive_type == 'full':
+            edge_label_index_positive = test_data['publication', 'cites', 'dataset'].edge_label_index_test_ind
         publications_embeddings = h_paper
         datasets_embeddings = h_data
         h_src = publications_embeddings[sorted(list(set(edge_label_index_positive[0].tolist()))), :]
@@ -273,6 +280,7 @@ def main(args,indices = []):
         targets = edge_label_index_positive[1].tolist()
 
         y_test_true_labels = {source: [] for source in sources}
+
         for source, target in zip(sources, targets):
             y_test_true_labels[source].append(target)
 
@@ -287,27 +295,84 @@ def main(args,indices = []):
             y_test_predicted_values[sources[i]] = top_values[i]
 
 
-
-        for topk in [1,5,10]:
+        for topk in [5,10]:
+            print(f'topk: {topk}')
             precision = 0
             recall_0 = 0
             ndcg = 0
-            print('NO RERANK')
             for source in sources:
                 true = y_test_true_labels[source]
                 pred = y_test_predicted_labels[source][:topk]
                 precision += len(list(set(pred).intersection(true))) / topk
                 recall_0 += len(list(set(pred).intersection(true))) / len(true)
                 ndcg += ndcg_at_k(true, pred, topk)
-            f.write(f'TYPE: {type}\n')
-            print(f'AUC {roc_auc} AP {ap}')
-            line = f'\nTOP {topk} - P {precision/len(sources)} R {recall_0/len(sources)} NDCG {ndcg/len(sources)}'
-            f.write(line)
-            print(f'type: {type}')
+            #line = f'\nTOP {topk} - P {precision/len(sources)} R {recall_0/len(sources)} NDCG {ndcg/len(sources)}'
+            #f.write(line)
             print(f'{str(precision / len(sources))} & {str(recall_0 / len(sources))} & {str(ndcg / len(sources))}')
 
-        return roc_auc, ap,  precision / len(sources), recall_0 / len(sources), ndcg / len(sources)
+        return roc_auc, f1,  precision / len(sources), recall_0 / len(sources), ndcg / len(sources)
 
+        #print(line)
+        # threshold = 0.5
+        #
+        # # Converte i valori continui in predizioni binarie
+        # predicted_probs = link_pred.cpu().numpy().astype(numpy.float32).tolist()
+        # predicted_labels = [1 if prob >= threshold else 0 for prob in predicted_probs]
+        # f1 = f1_score(y_true_test.cpu().numpy().astype(numpy.float32), predicted_labels)
+        #
+        # if type == 'trans':
+        #     edge_label_index_positive = test_data['publication', 'cites', 'dataset'].edge_label_index_test_trans
+        # elif type == 'ind':
+        #     edge_label_index_positive = test_data['publication', 'cites', 'dataset'].edge_label_index_test_ind
+        # elif type == 'semi':
+        #     edge_label_index_positive = test_data['publication', 'cites', 'dataset'].edge_label_index_test_semi
+        #
+        #
+        # edge_label_index_positive = edge_label_index_positive[:,:int(edge_label_index_positive.size(1)/2)]
+        # publications_embeddings = h_paper
+        # datasets_embeddings = h_data
+        # h_src = publications_embeddings[sorted(list(set(edge_label_index_positive[0].tolist()))), :]
+        # h_dst = datasets_embeddings
+        # final_matrix = torch.matmul(h_src, h_dst.t())
+        #
+        # sources = edge_label_index_positive[0].tolist()
+        # targets = edge_label_index_positive[1].tolist()
+        #
+        # y_test_true_labels = {source: [] for source in sources}
+        # for source, target in zip(sources, targets):
+        #     y_test_true_labels[source].append(target)
+        #
+        # y_test_true_labels = {k: y_test_true_labels[k] for k in sorted(list(y_test_true_labels.keys()))}
+        #
+        # top_values, top_indices = torch.topk(final_matrix, k=num_dataset, dim=1)
+        # sources = sorted(list(y_test_true_labels.keys()))
+        # y_test_predicted_labels = {source: [] for source in sources}
+        # y_test_predicted_values = {source: [] for source in sources}
+        # for i, lista in enumerate(top_indices.tolist()):
+        #     y_test_predicted_labels[sources[i]] = lista
+        #     y_test_predicted_values[sources[i]] = top_values[i]
+        #
+        #
+        #
+        # for topk in [1,5,10]:
+        #     precision = 0
+        #     recall_0 = 0
+        #     ndcg = 0
+        #     print('NO RERANK')
+        #     for source in sources:
+        #         true = y_test_true_labels[source]
+        #         pred = y_test_predicted_labels[source][:topk]
+        #         precision += len(list(set(pred).intersection(true))) / topk
+        #         recall_0 += len(list(set(pred).intersection(true))) / len(true)
+        #         ndcg += ndcg_at_k(true, pred, topk)
+        #     f.write(f'TYPE: {type}\n')
+        #     print(f'AUC {roc_auc} AP {ap}')
+        #     line = f'\nTOP {topk} - P {precision/len(sources)} R {recall_0/len(sources)} NDCG {ndcg/len(sources)}'
+        #     f.write(line)
+        #     print(f'type: {type}')
+        #     print(f'{str(precision / len(sources))} & {str(recall_0 / len(sources))} & {str(ndcg / len(sources))}')
+
+        return roc_auc, f1
 
 
 
@@ -329,113 +394,56 @@ def main(args,indices = []):
         if max_epochs == 100:
             break
 
-        print(f'Epoch: {epoch:02d}, Loss: {loss:.4f}, val loss: {loss_val:.4f}')
+        #print(f'Epoch: {epoch:02d}, Loss: {loss:.4f}, val loss: {loss_val:.4f}')
         # print(f'Epoch: {epoch:02d}, Loss: {loss:.4f}')
 
     # print(f"Median time per epoch: {torch.tensor(times).median():.4f}s")
-    auc_trans, ap_trans, precision_trans, recall_trans, ndcg_trans = test(test_data_trans, 'trans')
-    auc_semi, ap_semi, precision_semi, recall_semi, ndcg_semi = test(test_data_semi, 'semi')
-    auc_ind, ap_ind, precision_ind, recall_ind, ndcg_ind = test(test_data_ind, 'ind')
-    f.close()
-
-    auc = [auc_trans, auc_semi, auc_ind]
-    ap = [ap_trans, ap_semi, ap_ind]
-    precision = [precision_trans, precision_semi, precision_ind]
-    recall = [recall_trans, recall_semi, recall_ind]
-    ndcg = [ndcg_trans, ndcg_semi, ndcg_ind]
-
-    if args.no_metadata in [25, 50, 75]:
-        return auc, ap, precision, recall, ndcg
+    test(test_data)
 
 if __name__ == '__main__':
     args = parser.parse_args()
 
     datasets = ['mes']
     for dataset in datasets:
+        print('\n\n\n')
         print(f'dataset: {dataset}')
-        for model in ['hgt']:
+        for model in ['hgt','han']:
+            print(f'model: {model}')
+            print('\n\n\n')
             args.model = model
             args.dataset = dataset
             if args.test:
-                for epochs in [100,150,200]:
+                for epochs in [100]:
                     args.epochs = epochs
-                    for lr in [0.00001,0.0001,0.001]:
-                        for me in [0,100]:
-                            for heads in [1,2,4,8]:
-                                for channels in [128,64]:
-                                    for layer in [1,2,3]:
+                    for lr in [0.001]: # hgt: 0.001
+                        for me in [0]:
+                            for heads in [2]: # hgt: 2
+                                for channels in [64]: # hgt: 64
+                                    for layer in [1]: # hgt: 1
                                          args.heads = heads
                                          args.channels = channels
                                          args.layer = layer
-                                         args.no_metadata = me
+                                         args.split = me
                                          root = f'./datasets/{args.dataset}/split_transductive/train'
                                          data = ScholarlyDataset(root=root)
                                          train_data = data[0]
                                          dataset_num = train_data['dataset'].x.shape[0]
                                          indices = [i for i in range(dataset_num)]
-                                         if me == 0:
-                                             indices = []
+                                         number_perm = int((args.split / 100) * dataset_num)
+                                         indices = random.sample(range(dataset_num), number_perm)
+                                         print('indices', len(indices))
+                                         print(args)
                                          args.lr = lr
-                                         main(args,indices)
+                                         print('TRANS')
+                                         args.inductive_type = 'trans'
+                                         main(args, indices)
+                                         print('SEMI')
+                                         args.inductive_type = 'light'
+                                         main(args, indices)
+                                         print('IND')
+                                         args.inductive_type = 'full'
+                                         main(args, indices)
 
-                        if dataset in ['mes_']:
-                            args.epochs = epochs
-                            args.dataset = 'mes'
-                            args.lr = lr
-                            stringa = f'unique_{dataset}_{epochs}_{lr}_{heads}_{ch}_{layer}'
-                            root = f'./datasets/{args.dataset}/split_transductive/train'
-                            data = ScholarlyDataset(root=root)
-                            train_data = data[0]
-                            dataset_num = train_data['dataset'].x.shape[0]
-                            for me in [25,50,75]:
-                                gg = open(f'baselines/sage/results/{args.model}/bootstrapped_unique_{me}_{stringa}.txt',
-                                          'w')
-                                auc_trans, ap_trans, prec_trans, rec_trans, ndcg_trans = [], [], [], [], []
-                                auc_semi, ap_semi, prec_semi, rec_semi, ndcg_semi = [], [], [], [], []
-                                auc_ind, ap_ind, prec_ind, rec_ind, ndcg_ind = [], [], [], [], []
-                                
-                                for j in range(1,11):
-                                    random.seed(j)
-                                    stringa = f'unique_{dataset}_{epochs}_{lr}_{heads}_{ch}_{layer}'
-                                    print(f'iteration {j} nometa {me} dataset {args.dataset}')
-                                    args.iteration = j
-                                    args.no_metadata = me
-                                    number_perm = int((args.no_metadata / 100) * dataset_num)
-                                    indices = random.sample(range(dataset_num), number_perm)
-                                    print(len(indices))
-                                    auc_tmp, ap_tmp, precision_tmp, recall_tmp, ndcg_tmp = main(args, indices)
-                                    auc_trans.append(auc_tmp[0])
-                                    ap_trans.append(ap_tmp[0])
-                                    prec_trans.append(precision_tmp[0])
-                                    rec_trans.append(recall_tmp[0])
-                                    ndcg_trans.append(ndcg_tmp[0])
+                                         print('\n\n')
 
-                                    auc_semi.append(auc_tmp[1])
-                                    ap_semi.append(ap_tmp[1])
-                                    prec_semi.append(precision_tmp[1])
-                                    rec_semi.append(recall_tmp[1])
-                                    ndcg_semi.append(ndcg_tmp[1])
 
-                                    auc_ind.append(auc_tmp[2])
-                                    ap_ind.append(ap_tmp[2])
-                                    prec_ind.append(precision_tmp[2])
-                                    rec_ind.append(recall_tmp[2])
-                                    ndcg_ind.append(ndcg_tmp[2])
-                             
-                                gg.write('trans')
-                                gg.write(f"AP {sum(ap_trans) / len(ap_trans)} AUC {sum(auc_trans) / len(auc_trans)}\n P {sum(prec_trans)/len(prec_trans)} R {sum(rec_trans) / len(rec_trans)} NDCG {sum(ndcg_trans) / len(ndcg_trans)}\n")
-                                gg.write(f"AP {np.std(ap_trans) / np.sqrt(len(ap_trans))} AUC {np.std(auc_trans) / np.sqrt(len(auc_trans))}\n P {np.std(prec_trans)/np.sqrt(len(prec_trans))} R {np.std(rec_trans) / np.sqrt(len(rec_trans))} NDCG {np.std(ndcg_trans) / np.sqrt(len(ndcg_trans))}")
-
-                                gg.write('\nsemi\n')
-                                gg.write(
-                                    f"AP {sum(ap_semi) / len(ap_semi)} AUC {sum(auc_semi) / len(auc_semi)}\n P {sum(prec_semi) / len(prec_semi)} R {sum(rec_semi) / len(rec_semi)} NDCG {sum(ndcg_semi) / len(ndcg_semi)}\n")
-                                gg.write(
-                                    f"AP {np.std(ap_semi) / np.sqrt(len(ap_semi))} AUC {np.std(auc_semi) / np.sqrt(len(auc_semi))}\n P {np.std(prec_semi) / np.sqrt(len(prec_semi))} R {np.std(rec_semi) / np.sqrt(len(rec_semi))} NDCG {np.std(ndcg_semi) / np.sqrt(len(ndcg_semi))}")
-
-                                gg.write('\nind\n')
-                                gg.write(
-                                    f"AP {sum(ap_ind) / len(ap_ind)} AUC {sum(auc_ind) / len(auc_ind)}\n P {sum(prec_ind) / len(prec_ind)} R {sum(rec_ind) / len(rec_ind)} NDCG {sum(ndcg_trans) / len(ndcg_ind)}\n")
-                                gg.write(
-                                    f"AP {np.std(ap_ind) / np.sqrt(len(ap_ind))} AUC {np.std(auc_ind) / np.sqrt(len(auc_ind))}\n P {np.std(prec_ind) / np.sqrt(len(prec_ind))} R {np.std(rec_ind) / np.sqrt(len(rec_ind))} NDCG {np.std(ndcg_ind) / np.sqrt(len(ndcg_ind))}")
-
-                                gg.close()

@@ -1,3 +1,5 @@
+import pickle
+
 import torch
 from args_list import get_args
 import numpy as np
@@ -16,7 +18,7 @@ import time
 from model_sigir import ScHetGNN
 from torch_geometric import seed_everything
 
-seed_everything(42)
+
 import torch.nn.functional as F
 
 # in transductive basta fare i path una volta, tanto i nodi li ho sempre visti in ogni set
@@ -40,7 +42,7 @@ args = get_args()
 
 def seed_torch(seed=42):
     random.seed(seed)
-
+    seed_everything(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -50,9 +52,10 @@ def seed_torch(seed=42):
     torch.backends.cudnn.deterministic = True
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
     torch.use_deterministic_algorithms(True)
+    torch.backends.cudnn.enabled = False
+    torch.set_rng_state(torch.get_rng_state())
 
 
-seed_torch()
 
 
 # torch.use_deterministic_algorithms(True)
@@ -121,7 +124,14 @@ class Trainer:
 
 
         self.model.init_weights()
-        print(torch.cuda.device_count())
+        # print("Pesi inizializzati:")
+        # for name, param in self.model.named_parameters():
+        #     if 'weight' in name:
+        #         print(f"{name}:\n{param.data}\n")
+        #
+        #     # Se vuoi stampare anche i bias
+        #     if 'bias' in name:
+        #         print(f"{name}:\n{param.data}\n")
 
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.lr, weight_decay=args.wd)
@@ -187,6 +197,7 @@ class Trainer:
 
     def test(self, test_positive_pd_edges, test_negative_pd_edges, epoch, stringa, best=False, type='trans'):
         print(f'TYPE: {type}')
+        self.model.eval()
         with torch.no_grad():
 
             output_file_path = f"model/checkpoint/transductive/results/{self.args.dataset}/{self.args.enriched}/UNIQUE_RESULTS_unique_{epoch}_{stringa}_{type}.txt"
@@ -232,191 +243,328 @@ class Trainer:
             ap_tot = 0
             f1_tot = 0
             #if not os.path.exists(f'./model/data/test_walks/{self.args.dataset}_best_test_paths.txt'):
-            range_s = 1
+            range_s = 40
             if self.args.dataset == 'pubmed':
-                range_s = 1
-            for iter in range(range_s):
+                range_s = 30
+            # if self.args.dataset == 'mes' and self.args.inductive_type == 'trans':
+            #     range_s = 1
+            # mes: 27,28
+            # pubmed: 6, 29
+            selected_seeds_walks_1,selected_seeds_cores_1,selected_seeds_hubs_top_1,selected_seeds_hubs_key_1 = [],[],[],[]
+
+            for iter in range(1):
                 print('eval round: ', str(iter))
+                removed,targets_0 = [],[]
                 sources = list(self.y_test_true_labels.keys())
                 neg_sources = list(test_negative_pd_edges[0].tolist())
                 datasets = list(self.dataset['dataset'].mapping.keys())
                 pos_source = [self.dataset['publication'].rev_mapping[j] for j in sources]
                 neg_source = [self.dataset['publication'].rev_mapping[j] for j in neg_sources]
                 all_seeds = pos_source + neg_source + datasets
+                print(len(datasets), len(pos_source), len(neg_source), len(all_seeds))
 
+
+                print(len(datasets), len(pos_source), len(neg_source), len(all_seeds))
                 self.walker.set_seeds(all_seeds)
+                if self.args.dataset == 'mes' :
+                    if self.args.inductive_type == 'trans':
+                        iter = 3
+                    elif self.args.inductive_type == 'light':
+                        iter = 13
+                    else:
+                        iter = 16
+                else:
+                    if self.args.inductive_type == 'trans':
+                        iter = 8
+                    elif self.args.inductive_type == 'light':
+                        iter = 4
+                    else:
+                        iter = 14
+                if not os.path.exists(f'./model/data/test_walks/{self.args.dataset}_{iter}_{type}_unique_test_paths_0.txt') :
+                    all_walks = self.walker.create_random_walks(seeds_in=all_seeds)
+                    print(f'created {len(all_walks)} random walks')
+                    #if not args.eval_aggregation:
+                    ff = open(f'./model/data/test_walks/{self.args.dataset}_{iter}_{type}_unique_test_paths_0.txt', 'w')
+                    for walk in all_walks:
+                        ff.write(' '.join(walk))
+                        ff.write('\n')
+                    print('written')
+                    ff.close()
+                else:
+                    print('open')
 
-                # if not os.path.exists(f'./model/data/test_walks/{self.args.dataset}_{iter}_{type}_unique_test_paths.txt'):
-                #ff = open(f'./model/data/test_walks/{self.args.dataset}_{iter}_{type}_unique_test_paths.txt', 'w')
-                all_walks = self.walker.create_random_walks(seeds_in=all_seeds)
-                print(f'created {len(all_walks)} random walks')
-                # for walk in all_walks:
-                #     ff.write(' '.join(walk))
-                #     ff.write('\n')
-                #print('written')
-                #ff.close()
-                # else:
-                # ff = open(f'./model/data/test_walks/{self.args.dataset}_{iter}_{type}_unique_test_paths.txt', 'r')
-                # all_walks = ff.readlines()
-                # ff.close()
-                #walks = [w.split() for w in all_walks]
+                    ff = open(f'./model/data/test_walks/{self.args.dataset}_{iter}_{type}_unique_test_paths_0.txt', 'r')
+                    all_walks = ff.readlines()
+                    all_walks = [w.split() for w in all_walks]
+                    ff.close()
+                #
                 walks = [w for w in all_walks]
                 all_walks = {seed: [] for seed in self.walker.G.nodes if
                              self.walker.is_publication(seed) or self.walker.is_dataset(seed)}
+
                 for walk in walks:
                     all_walks[walk[0]].append(walk)
+
+
                 all_walks = {k: v for k, v in all_walks.items() if len(v) > 0}
                 all_walks = [v for k, v in all_walks.items() if k in all_seeds]
                 all_walks = [inner for outer in all_walks for inner in outer]
-
+                #print(all_walks[0:10])
                 selected_seeds_walks, selected_seeds_cores, selected_seeds_hubs_key, selected_seeds_hubs_top = self.walker.select_walks_mp(
                     all_walks)
+
+                # selected_seeds_walks_0 = [elemento for sottolista in selected_seeds_walks for elemento in sottolista]
+                # selected_seeds_walks_0 = [elemento for sottolista in selected_seeds_walks_0 for elemento in sottolista]
+                # selected_seeds_cores_0 = [elemento for sottolista in selected_seeds_cores for elemento in sottolista]
+                # selected_seeds_hubs_top_0 = [elemento for sottolista in selected_seeds_hubs_top for elemento in sottolista]
+                # selected_seeds_hubs_key_0 = [elemento for sottolista in selected_seeds_hubs_key for elemento in sottolista]
+                # print(selected_seeds_walks_0[0:5])
+                # print(selected_seeds_cores_0[0:5])
+                # print(selected_seeds_hubs_top_0[0:5])
+                # print(selected_seeds_hubs_key_0[0:5])
+                # if iter == 0:
+                #     selected_seeds_walks_1 = selected_seeds_walks_0
+                #     selected_seeds_cores_1 = selected_seeds_cores_0
+                #     selected_seeds_hubs_top_1 = selected_seeds_hubs_top_0
+                #     selected_seeds_hubs_key_1 = selected_seeds_hubs_key_0
+                # if iter == 1:
+                #     for i,j in zip(selected_seeds_walks_0, selected_seeds_walks_1):
+                #         if i != j:
+                #             print('attenzione walk')
+                #
+                #     for i, j in zip(selected_seeds_cores_0, selected_seeds_cores_1):
+                #         if i != j:
+                #             print('attenzione core')
+                #
+                #     for i, j in zip(selected_seeds_hubs_top_0, selected_seeds_hubs_top_1):
+                #         if i != j:
+                #             print('attenzione top')
+                #
+                #     for i, j in zip(selected_seeds_hubs_key_0, selected_seeds_hubs_key_1):
+                #         if i != j:
+                #             print('attenzione key')
+
                 seed_vectors, seed_vectors_net, net_cores, cores, net_keys, keys, net_hubs, hubs, _, _, _, _, _, _, _, _ = self.walker.get_neighbours_vector(
                     selected_seeds_cores,
                     selected_seeds_hubs_key,
                     selected_seeds_hubs_top)
+                # print(seed_vectors[0:5])
+                # print(seed_vectors_net[0:5])
+                # print(net_cores[0:5])
+                k = [tuple([sublist[0],sublist[1]]) for lista in keys for sublist in lista]
+                k = sorted(k, key=lambda tup: (tup[0],tup[1]))
+                k_path = "./model/data/test_walks/keys0.json"
 
+                # Se i pesi non sono stati ancora salvati, salvali
+                # if not os.path.exists(k_path):
+                #     json.dump(k, open(k_path, 'w'))
+                # else:
+                #     kk = json.load(open(k_path, 'r'))
+                #     for i,j in zip(k,kk):
+                #         if tuple(i) != tuple(j):
+                #             print(f'different: {i}, {j}')
+                # print(keys[0:1])
+                # print(hubs[0:1])
                 pos_source_indices = [all_seeds.index(j) for i, j in enumerate(pos_source)]
-                pos_target_indices = [all_seeds.index(j) for i, j in enumerate(datasets)]
 
+                pos_target_indices = [all_seeds.index(j) for i, j in enumerate(datasets)]
+                if self.model.training:
+                    print("Il modello è in modalità TRAIN")
+                else:
+                    print("Il modello è in modalità EVAL")
+                torch.cuda.synchronize()
+                self.model = self.model.float()
                 final_embeddings = self.model(seed_vectors, seed_vectors_net, net_cores, cores, net_keys, keys,
                                               net_hubs,hubs, core_agg=self.args.core_aggregation,
                                               key_agg=self.args.key_aggregation, top_agg=self.args.top_aggregation,
                                               all_agg=self.args.all_aggregation)
 
+                weights_path = "./model/data/test_walks/initial_weights.pth"
+
+                # Se i pesi non sono stati ancora salvati, salvali
+                if not os.path.exists(weights_path):
+                    torch.save(self.model.state_dict(), weights_path)
+                    print("Pesi iniziali salvati.")
+                else:
+                    saved_weights = torch.load(weights_path)
+
+                    equal = True
+                    # for (name, param), (saved_name, saved_param) in zip(self.model.named_parameters(),
+                    #                                                     saved_weights.items()):
+                    #     if not torch.equal(param.detach().cpu(), saved_param.cpu()):
+                    #         equal = False
+                    #         print(f"Differenza trovata nel parametro: {name}")
+                    #         # Confronto vettore per vettore nel tensore
+                    #         for i in range(param.numel()):  # numel() restituisce il numero totale di elementi nel tensore
+                    #             if param.view(-1)[i] != saved_param.view(-1)[i]:
+                    #                 print(
+                    #                     f"Valore differente in posizione {i}: {param.view(-1)[i]} vs {saved_param.view(-1)[i]}")
+                    #                 break  # Esce dal loop se trova una differenza
+
+                    if equal:
+                        print("Tutti i pesi sono identici!")
+                    else:
+                        print("Ci sono differenze nei pesi!")
+
+
+                file_path = "./model/data/test_walks/final_embeddings.pkl"
+
+                # Save the embeddings
+                if not os.path.exists(file_path):
+                    with open(file_path, "wb") as f:
+                        pickle.dump(final_embeddings.detach().cpu(), f)
+                else:
+                    embs = pickle.load(open(file_path, "rb"))
+                    equal = torch.equal(final_embeddings.detach().cpu(), embs.detach().cpu())
+                    # print("Sono identici:", equal)
+                    # for i in range(final_embeddings.shape[0]):
+                        # equal = torch.allclose(final_embeddings.detach().cpu()[i], embs.detach().cpu()[i], atol=1e-3)
+                        # torch.equal(final_embeddings.detach().cpu()[i], embs.detach().cpu()[i])
+                        #if not equal:
+
+                            # print(f"Vettore {i} diverso!")
+                            #
+                            # print("Final_embeddings:", final_embeddings[i])
+                            # print("Embs:", embs[i])
+                            # indices_diff = (final_embeddings.detach().cpu()[i] != embs.detach().cpu()[i]).nonzero(as_tuple=True)[0]
+                            #
+                            # # Visualizza gli indici e i valori diversi
+                            # for idx in indices_diff:
+                            #     print(
+                            #         f"Indice {idx.item()}: Final_embeddings = {final_embeddings.detach().cpu()[i][idx].item()}, Embs = {embs.detach().cpu()[i][idx].item()}")
+                            # break
+                #print(final_embeddings[0:3])
                 # Calcola il prodotto scalare tra gli embeddings normalizzati
                 pub_embeddings = F.normalize(final_embeddings[pos_source_indices], p=2, dim=1)
                 data_embeddings = F.normalize(final_embeddings[pos_target_indices], p=2, dim=1)
-
+                #print(pub_embeddings[10:30])
+                #print(data_embeddings[10:30])
                 final_matrix = torch.mm(pub_embeddings, data_embeddings.t())
-                top_values, top_indices = torch.topk(final_matrix, k=len(datasets), dim=1)
-
+                #final_matrix = torch.sigmoid(final_matrix)
+                #print(final_matrix)
+                top_values, top_indices = torch.topk(final_matrix, k=10, dim=1)
+                #print(top_values)
                 y_test_predicted_labels_norerank = {source: [] for source in sources}
                 for i, lista in enumerate(top_indices.tolist()):
-                    y_test_predicted_labels_norerank[sources[i]] = lista[0:self.args.topk]
+                    y_test_predicted_labels_norerank[sources[i]] = lista[0:10]
 
 
 
                 precisions,recalls,ndcgs = [],[],[]
 
-                run = []
-                print(len(sources))
-
                 # LINK PREDICTION
                 y_true_test = np.array([1] * test_positive_pd_edges.size(1) + [0] * test_negative_pd_edges.size(1))
-                # all_walks = None
-                # if os.path.exists(f'./model/data/test_walks/{self.args.dataset}_{iter}_{type}_unique_test_paths.txt'):
-                #     g = open(f'./model/data/test_walks/{self.args.dataset}_{iter}_{type}_unique_test_paths.txt', 'r')
-                #     all_walks = g.readlines()
-                #     walks = [w.split() for w in all_walks]
-                #
                 all_walks = {seed: [] for seed in self.walker.G.nodes if
                              self.walker.is_publication(seed) or self.walker.is_dataset(seed)}
 
                 for walk in walks:
                     all_walks[walk[0]].append(walk)
+
                 all_walks = {k: v for k, v in all_walks.items() if len(v) > 0}
+                if self.args.lp:
+                    loss, final_embeddings, pos_source, pos_target, neg_source, neg_target, all_seeds = self.run_minibatch_transductive(
+                        self.dataset, 0,
+                        test_positive_pd_edges, test_negative_pd_edges,
+                        test=True, all_walks=all_walks)
 
-                loss, final_embeddings, pos_source, pos_target, neg_source, neg_target, all_seeds = self.run_minibatch_transductive(
-                    self.dataset, 0,
-                    test_positive_pd_edges, test_negative_pd_edges,
-                    test=True, all_walks=all_walks)
+                    pos_embeddings_source_ori, neg_embeddings_source_ori = final_embeddings[pos_source], \
+                    final_embeddings[
+                        neg_source]
+                    pos_embeddings_target_ori, neg_embeddings_target_ori = final_embeddings[pos_target], \
+                    final_embeddings[
+                        neg_target]
 
-                pos_embeddings_source_ori, neg_embeddings_source_ori = final_embeddings[pos_source], \
-                final_embeddings[
-                    neg_source]
-                pos_embeddings_target_ori, neg_embeddings_target_ori = final_embeddings[pos_target], \
-                final_embeddings[
-                    neg_target]
+                    pos_embeddings_source = pos_embeddings_source_ori.view(pos_embeddings_source_ori.size(0), 1,
+                                                                           pos_embeddings_source_ori.size(
+                                                                               1))  # [batch_size, 1, embed_d]
+                    neg_embeddings_source = neg_embeddings_source_ori.view(neg_embeddings_source_ori.size(0), 1,
+                                                                           neg_embeddings_source_ori.size(
+                                                                               1))  # [batch_size, 1, embed_d]
+                    pos_embeddings_target = pos_embeddings_target_ori.view(pos_embeddings_target_ori.size(0),
+                                                                           pos_embeddings_target_ori.size(1),
+                                                                           1)  # [batch_size, embed_d, 1]
+                    neg_embeddings_target = neg_embeddings_target_ori.view(neg_embeddings_target_ori.size(0),
+                                                                           neg_embeddings_target_ori.size(1),
+                                                                           1)  # [batch_size, embed_d, 1]
+                    if args.core_aggregation == 'mh-attention':
+                        pos_embeddings_source = F.normalize(pos_embeddings_source, p=2, dim=-1)
+                        pos_embeddings_target = F.normalize(pos_embeddings_target, p=2, dim=-1)
 
-                pos_embeddings_source = pos_embeddings_source_ori.view(pos_embeddings_source_ori.size(0), 1,
-                                                                       pos_embeddings_source_ori.size(
-                                                                           1))  # [batch_size, 1, embed_d]
-                neg_embeddings_source = neg_embeddings_source_ori.view(neg_embeddings_source_ori.size(0), 1,
-                                                                       neg_embeddings_source_ori.size(
-                                                                           1))  # [batch_size, 1, embed_d]
-                pos_embeddings_target = pos_embeddings_target_ori.view(pos_embeddings_target_ori.size(0),
-                                                                       pos_embeddings_target_ori.size(1),
-                                                                       1)  # [batch_size, embed_d, 1]
-                neg_embeddings_target = neg_embeddings_target_ori.view(neg_embeddings_target_ori.size(0),
-                                                                       neg_embeddings_target_ori.size(1),
-                                                                       1)  # [batch_size, embed_d, 1]
-                if args.core_aggregation == 'mh-attention':
-                    pos_embeddings_source = F.normalize(pos_embeddings_source, p=2, dim=-1)
-                    pos_embeddings_target = F.normalize(pos_embeddings_target, p=2, dim=-1)
+                        neg_embeddings_source = F.normalize(neg_embeddings_source, p=2, dim=-1)
+                        neg_embeddings_target = F.normalize(neg_embeddings_target, p=2, dim=-1)
 
-                    neg_embeddings_source = F.normalize(neg_embeddings_source, p=2, dim=-1)
-                    neg_embeddings_target = F.normalize(neg_embeddings_target, p=2, dim=-1)
-
-                result_positive_matrix = torch.bmm(pos_embeddings_source, pos_embeddings_target)
-                result_positive_matrix = torch.sigmoid(result_positive_matrix)
-
-
-
-                result_negative_matrix = torch.bmm(neg_embeddings_source, neg_embeddings_target)
-                result_negative_matrix = torch.sigmoid(result_negative_matrix)
-
-                y_predicted_test = torch.cat([result_positive_matrix.squeeze(), result_negative_matrix.squeeze()])
-                y_predicted_test = y_predicted_test.detach().cpu().numpy()
+                    result_positive_matrix = torch.bmm(pos_embeddings_source, pos_embeddings_target)
+                    result_positive_matrix = torch.sigmoid(result_positive_matrix)
 
 
 
+                    result_negative_matrix = torch.bmm(neg_embeddings_source, neg_embeddings_target)
+                    result_negative_matrix = torch.sigmoid(result_negative_matrix)
 
-                auc = roc_auc_score(y_true_test, y_predicted_test)
-                auc_tot += auc
-                ap = average_precision_score(y_true_test, y_predicted_test)
-                ap_tot += ap
-                threshold = args.f1_threshold
-                print(y_predicted_test)
-                print(y_true_test)
-                y_pred = [1 if score >= threshold else 0 for score in y_predicted_test]
-                f1 = f1_score(y_true_test, y_pred)
-                f1_tot += f1
-                print('Link Prediction Test\n')
-                print('AUC = {}'.format(auc))
-                print('AP = {}'.format(ap))
-                print('F1 = {}\n\n'.format(f1))
-
-                for topk in [1, 5, 10]:
-                    precision, no_rer_precision = 0, 0
-                    recall, no_rer_recall = 0, 0
-                    ndcg, no_rer_ndcg = 0, 0
-                    for source in sources:
-                        true = self.y_test_true_labels[source]
-                        pred_nonrer = y_test_predicted_labels_norerank[source][:topk]
-                        no_rer_precision += len(list(set(pred_nonrer).intersection(true))) / topk
-                        no_rer_recall += len(list(set(pred_nonrer).intersection(true))) / len(true)
-                        no_rer_ndcg += ndcg_at_k(true, pred_nonrer, topk)
-
-                    print(f'results {topk}')
-                    print(no_rer_precision / len(sources))
-                    print(no_rer_recall / len(sources))
-                    print(no_rer_ndcg / len(sources))
-                    precisions.append(no_rer_precision / len(sources))
-                    recalls.append(no_rer_recall / len(sources))
-                    ndcgs.append(no_rer_ndcg / len(sources))
+                    y_predicted_test = torch.cat([result_positive_matrix.squeeze(), result_negative_matrix.squeeze()])
+                    y_predicted_test = y_predicted_test.detach().cpu().numpy()
 
 
 
-            f.write(f'\ntype\n {type}')
-            f.write('LINK PREDICTION\n')
-            f.write(f"AUC {auc}\n")
-            f.write(f"AP {ap}\n")
-            f.write(f"F1 {f1}\n\n")
-            f.write('RECOMMENDATION\n')
-            f.write('top 1\n')
-            f.write(f"precision {precisions[0]}\n")
-            f.write(f"recall {recalls[0]}\n")
-            f.write(f"nDCG {ndcgs[0]}\n")
-            f.write('top 5\n')
-            f.write(f"precision {precisions[1]}\n")
-            f.write(f"recall {recalls[1]}\n")
-            f.write(f"nDCG {ndcgs[1]}\n")
-            f.write('top 10\n')
-            f.write(f"precision {precisions[2]}\n")
-            f.write(f"recall {recalls[2]}\n")
-            f.write(f"nDCG {ndcgs[2]}\n")
-            f.close()
+
+                    auc = roc_auc_score(y_true_test, y_predicted_test)
+                    auc_tot += auc
+                    ap = average_precision_score(y_true_test, y_predicted_test)
+                    ap_tot += ap
+                    threshold = args.f1_threshold
+                    y_pred = [1 if score >= threshold else 0 for score in y_predicted_test]
+                    f1 = f1_score(y_true_test, y_pred)
+                    f1_tot += f1
+                    print('Link Prediction Test\n')
+                    print('AUC = {}'.format(auc))
+                    print('AP = {}'.format(ap))
+                    print('F1 = {}\n\n'.format(f1))
+
+                if self.args.rec:
+                    for topk in [1, 5, 10]:
+                        precision, no_rer_precision = 0, 0
+                        recall, no_rer_recall = 0, 0
+                        ndcg, no_rer_ndcg = 0, 0
+                        for source in sources:
+                            #print(source)
+                            true = self.y_test_true_labels[source]
+                            #print(true)
+                            pred_nonrer = y_test_predicted_labels_norerank[source][:topk]
+                            # print(pred_nonrer)
+                            # print('\n\n')
+                            no_rer_precision += len(list(set(pred_nonrer).intersection(true))) / topk
+                            no_rer_recall += len(list(set(pred_nonrer).intersection(true))) / len(true)
+                            no_rer_ndcg += ndcg_at_k(true, pred_nonrer, topk)
+
+                        print(f'results {topk}')
+                        print(no_rer_precision / len(sources))
+                        print(no_rer_recall / len(sources))
+                        print(no_rer_ndcg / len(sources))
+                        precisions.append(no_rer_precision / len(sources))
+                        recalls.append(no_rer_recall / len(sources))
+                        ndcgs.append(no_rer_ndcg / len(sources))
+
+
+
+            # f.write(f'\ntype\n {type}')
+            # f.write('LINK PREDICTION\n')
+            # f.write(f"AUC {auc}\n")
+            # f.write(f"AP {ap}\n")
+            # f.write(f"F1 {f1}\n\n")
+            # f.write('RECOMMENDATION\n')
+            # f.write('top 1\n')
+            # f.write(f"precision {precisions[0]}\n")
+            # f.write(f"recall {recalls[0]}\n")
+            # f.write(f"nDCG {ndcgs[0]}\n")
+            # f.write('top 5\n')
+            # f.write(f"precision {precisions[1]}\n")
+            # f.write(f"recall {recalls[1]}\n")
+            # f.write(f"nDCG {ndcgs[1]}\n")
+            # f.write('top 10\n')
+            # f.write(f"precision {precisions[2]}\n")
+            # f.write(f"recall {recalls[2]}\n")
+            # f.write(f"nDCG {ndcgs[2]}\n")
+            # f.close()
 
 
     def run_minibatch_transductive(self, dataset, iteration, positive_edges, negative_edges, test=False,
@@ -518,11 +666,11 @@ class Trainer:
         edge_label_index_test = self.dataset['publication', 'cites', 'dataset'].edge_label_index_test_trans
         test_negative_pd_edges = self.dataset['publication', 'cites', 'dataset'].negative_edge_label_index_test_trans
 
-        if type == 'semi':
+        if type == 'light':
             edge_label_index_test = self.dataset['publication', 'cites', 'dataset'].edge_label_index_test_semi
             test_negative_pd_edges = self.dataset['publication', 'cites', 'dataset'].negative_edge_label_index_test_semi
 
-        elif type == 'ind':
+        elif type == 'full':
             edge_label_index_test = self.dataset['publication', 'cites', 'dataset'].edge_label_index_test_ind
             test_negative_pd_edges = self.dataset['publication', 'cites', 'dataset'].negative_edge_label_index_test_ind
 
@@ -544,12 +692,13 @@ class Trainer:
             y_test_true_labels[source].append(target)
 
         self.y_test_true_labels = {k: y_test_true_labels[k] for k in sorted(list(y_test_true_labels.keys()))}
+        print(f'true labels: {self.y_test_true_labels}')
 
         stringa = f'lr-{self.args.lr}_heads-{self.args.heads}_batch-{self.args.batch_size}_cores-{self.args.n_cores}_key-{self.args.n_keys_hubs}_top-{self.args.n_top_hubs}_aggrcore-{self.args.core_aggregation}_aggrkeys-{self.args.key_aggregation}_aggrtop-{self.args.top_aggregation}_allagg-{self.args.all_aggregation}_loss-{args.loss}'
 
         stringa = 'unique_' + self.args.dataset + '_' + stringa
-        if self.args.no_metadata:
-            stringa = 'NO_METADATA_unique_' + stringa
+        if self.args.no_aug:
+            stringa = 'no_aug_unique_' + stringa
 
         save_epoch_path = f'./model/checkpoint/transductive/models/{self.args.dataset}/{self.args.enriched}/unique_last_checkpoint_{stringa}_last_epoch.pt'
         save_early_path = f'./model/checkpoint/transductive/models/{self.args.dataset}/{self.args.enriched}/unique_best_checkpoint_{stringa}.pt'
@@ -682,18 +831,20 @@ class Trainer:
             with torch.no_grad():
                 stringa = f'lr-{self.args.lr}_heads-{self.args.heads}_batch-{self.args.batch_size}_cores-{self.args.n_cores}_key-{self.args.n_keys_hubs}_top-{self.args.n_top_hubs}_aggrcore-{self.args.core_aggregation}_aggrkeys-{self.args.key_aggregation}_aggrtop-{self.args.top_aggregation}_allagg-{self.args.all_aggregation}_loss-{args.loss}'
                 stringa = 'unique_' + self.args.dataset + '_' + stringa
-                if args.no_metadata:
-                    stringa = 'NO_METADATA_unique_' + stringa
+                if args.no_aug:
+                    stringa = 'no_aug_unique_' + stringa
 
                 self.test(test_positive_pd_edges, test_negative_pd_edges, 'testepoch', stringa,type=type)
 
 
+
+
 if __name__ == '__main__':
     args = get_args()
-
-    print("------arguments-------")
-    for k, v in vars(args).items():
-        print(k + ': ' + str(v))
+    seed_torch()
+    # print("------arguments-------")
+    # for k, v in vars(args).items():
+    #     print(k + ': ' + str(v))
 
 
     # model - ABLATION
@@ -749,8 +900,10 @@ if __name__ == '__main__':
 
     args = get_args()
     if args.eval_aggregation or args.eval_all:
+
         args.eval_aggregation = True
-        for lr in ['gru', 'lstm','linear']:
+        for lr in ['gru', 'lstm','linear','mh-attention']:
+            print('AGGREGATION: ',lr)
             args.core_aggregation = lr
             args.key_aggregation = lr
             args.top_aggregation = lr
@@ -771,6 +924,7 @@ if __name__ == '__main__':
             # args.test = True
             # trainer = Trainer(args)
             # trainer.run_transductive(type='trans')
+
 
 
 
@@ -797,7 +951,7 @@ if __name__ == '__main__':
         # if args.dataset == 'pubmed':
         #     losses = ['crossentropy']
         # for loss in ['crossentropy']:
-        for dataset in ['mes','pubmed']:
+        for dataset in ['pubmed']:
             args = get_args()
             args.dataset = dataset
             trainer = Trainer(args)
@@ -806,8 +960,10 @@ if __name__ == '__main__':
 
 
     elif args.test:
-
+        args = get_args()
         trainer = Trainer(args)
-        trainer.run_transductive(type='trans')
+        type = args.inductive_type
+        trainer.run_transductive(type=type)
+        print('\n\n')
 
 

@@ -6,20 +6,23 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 import random
+import pickle
 from torch_geometric import seed_everything
-seed=42
-os.environ['PYTHONHASHSEED'] = str(seed)
-np.random.seed(seed)
-torch.manual_seed(seed)
-torch.cuda.manual_seed(seed)
-torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
-torch.backends.cudnn.benchmark = False
-torch.backends.cudnn.deterministic = True
-# os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
-torch.use_deterministic_algorithms(True)
-os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
-torch.backends.cudnn.enabled = False
-seed_everything(42)
+def seed_torch(seed=42):
+    random.seed(seed)
+    seed_everything(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)  # if you are using multi-GPU.
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
+    torch.use_deterministic_algorithms(True)
+
+
+#seed_torch()
 
 class CosineSimilarityAttention(nn.Module):
     def __init__(self, input_dim,hidden_dim):
@@ -53,7 +56,8 @@ class ScHetGNN(nn.Module):
     def __init__(self,args):
         super(ScHetGNN, self).__init__()
         self.args = args
-
+        numero_casuale = random.random()
+        print(numero_casuale)
         # if self.args.train:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         # else:
@@ -113,17 +117,35 @@ class ScHetGNN(nn.Module):
 
 
         self.act = torch.nn.LeakyReLU()
-
-
+        #self.init_weights()
 
     def init_weights(self):
         for m in self.modules():
-            if isinstance(m, nn.Linear) or isinstance(m, nn.Parameter) or isinstance(m, nn.LSTM)  or isinstance(m, nn.GRU)  or isinstance(m, nn.MultiheadAttention):
+            if isinstance(m, nn.Linear):
+                # Linear layers: Xavier Normal per i pesi e bias 0
                 for name, param in m.named_parameters():
                     if 'weight' in name:
-                        nn.init.xavier_normal_(param.data)
+                        nn.init.xavier_normal_(param)  # Usa direttamente param invece di param.data
                     elif 'bias' in name:
-                        nn.init.constant_(param.data, 0)
+                        nn.init.constant_(param, 0)
+
+            elif isinstance(m, nn.LSTM) or isinstance(m, nn.GRU):
+                # LSTM e GRU: Inizializza pesi di input e ricorrenza separatamente
+                for name, param in m.named_parameters():
+                    if 'weight_ih' in name:  # Pesi di input
+                        nn.init.xavier_normal_(param)
+                    elif 'weight_hh' in name:  # Pesi di ricorrenza
+                        nn.init.orthogonal_(param)  # Orthogonal è comune per le matrici di ricorrenza
+                    elif 'bias' in name:  # Bias
+                        nn.init.constant_(param, 0)
+
+            elif isinstance(m, nn.MultiheadAttention):
+                # Multihead Attention: Inizializzazione dei pesi
+                for name, param in m.named_parameters():
+                    if 'in_proj_weight' in name or 'out_proj_weight' in name:
+                        nn.init.xavier_normal_(param)
+                    elif 'bias' in name:
+                        nn.init.constant_(param, 0)
 
 
 
@@ -303,11 +325,6 @@ class ScHetGNN(nn.Module):
         concatenated_embeddings_matt = torch.stack(embeddings_tensors, dim=0)
 
         embeddings_query_tensors = [[emb[-1] for emb in lista] for lista in embeddings]
-        # if type_emb == 'top':
-        #     for e in embeddings_query_tensors:
-        #         for l in e:
-        #             print(l.shape)
-        #         print('\n\n')
 
         embeddings_query_tensors = [torch.stack(t) for t in embeddings_query_tensors]
 
@@ -316,9 +333,7 @@ class ScHetGNN(nn.Module):
 
         concatenated_embeddings_matt = torch.transpose(concatenated_embeddings_matt, 0, 1).to(self.device)
         concatenated_queries_matt = torch.transpose(concatenated_queries_matt, 0, 1).to(self.device)
-        # print(type_emb)
-        # print(concatenated_queries_matt.shape)
-        # print(concatenated_embeddings_matt.shape)
+
         if type_emb == 'core':
             concatenated_queries_matt = self.core_linear_projection(concatenated_queries_matt)
 
@@ -327,7 +342,17 @@ class ScHetGNN(nn.Module):
                                                  concatenated_embeddings_matt.to(self.device))
 
             output = output[0, :, :]
-            #output = self.act(self.core_linear_projection(output.to(self.device)))
+            file_path = "./model/data/test_walks/core_embeddings.pkl"
+
+            # Save the embeddings
+            if not os.path.exists(file_path):
+                with open(file_path, "wb") as f:
+                    pickle.dump(output.detach().cpu(), f)
+            else:
+                embs = pickle.load(open(file_path, "rb"))
+                equal = torch.equal(output.detach().cpu(), embs.detach().cpu())
+                print("Sono identici core:", equal)
+
 
         elif type_emb == 'key':
             concatenated_queries_matt = self.key_linear_projection(concatenated_queries_matt)
@@ -337,7 +362,17 @@ class ScHetGNN(nn.Module):
                                                  concatenated_embeddings_matt.to(self.device))
 
             output = output[0, :, :]
-            #output = self.act(self.key_linear_projection(output.to(self.device)))
+            file_path = "./model/data/test_walks/key_embeddings.pkl"
+
+            # Save the embeddings
+            if not os.path.exists(file_path):
+                with open(file_path, "wb") as g:
+                    pickle.dump(output.detach().cpu(), g)
+            else:
+                embs = pickle.load(open(file_path, "rb"))
+                equal = torch.equal(output.detach().cpu(), embs.detach().cpu())
+                print("Sono identici key:", equal)
+
 
         elif type_emb == 'top':
             concatenated_queries_matt = self.top_linear_projection(concatenated_queries_matt)
@@ -347,7 +382,16 @@ class ScHetGNN(nn.Module):
                                                  concatenated_embeddings_matt.to(self.device))
 
             output = output[0, :, :]
-            #output = self.act(self.top_linear_projection(output.to(self.device)))
+            file_path = "./model/data/test_walks/top_embeddings.pkl"
+
+            # Save the embeddings
+            if not os.path.exists(file_path):
+                with open(file_path, "wb") as gg:
+                    pickle.dump(output.detach().cpu(), gg)
+            else:
+                embs = pickle.load(open(file_path, "rb"))
+                equal = torch.equal(output.detach().cpu(), embs.detach().cpu())
+                print("Sono identici top:", equal)
         return output
 
     def aggregate_same_type_neigh_mh(self, seed_vectors,seed_net_vectors, neigh_embeddings, neigh_net_embeddings, type_emb='core'):
@@ -383,9 +427,11 @@ class ScHetGNN(nn.Module):
                                                  concatenated_all_matt.to(self.device),
                                                  concatenated_all_matt.to(self.device))
             output = torch.mean(output, dim=0)
-
+            print(f'output {output.shape}, {output}')
             #output = output[0, :, :]
             output = self.act(self.core_linear_projection_concat(output.to(self.device)))
+            print(f'output {output.shape}, {output}')
+
 
         elif type_emb == 'key':
             #concatenated_queries_matt = self.key_linear_projection(concatenated_queries_matt)
@@ -418,6 +464,7 @@ class ScHetGNN(nn.Module):
                 embeddings = [emb for emb in [cores_net_emb,core_emb,key_net_emb,key_emb] if emb is not None]
             if top_net_hub is not None and len(top_net_hub)>0:
                 embeddings = [emb for emb in [cores_net_emb,core_emb,key_net_emb,key_emb,top_net_hub,top_emb] if emb is not None]
+
 
             output_stacked = torch.stack(embeddings,dim=0).to(self.device)
             output, attention_weights = self.multihead_attn(output_stacked, output_stacked, output_stacked)
