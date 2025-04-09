@@ -3,6 +3,8 @@ This repository contains the code of MM-SAN, proposed as full paper at RECSYS'25
 MES and PubMed datasets are anonymous and available on [Figshare](https://figshare.com/s/1e11a6f03fbf97d61936)
 
 ## Project structure
+The main folder of the project is MM-SAN-main. 
+- The folder cutoff10 contains the performances of MM-SAN and the baseline methods in terms of ndcg@10 and recall@10.
 - In the folder `utils` there are the file necessary to create the docker image and run the container.
 - The folder [preprocessing` contains the scripts to preprocess data and make these files ready for the augmentation, sampling and aggregation phases. Please, note that the files available on Figshare are already processed.
 - The folder `augmentation` contains the scripts to perform entity linking and topic modelling and to analyze the data.
