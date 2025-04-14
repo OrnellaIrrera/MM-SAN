@@ -114,28 +114,28 @@ The dataset argument can take: pubmed or mes.
 To reproduce the experiments in the transductive setup run the following:
 
 ```
-docker run --rm -ti --gpus '"device=0"' --ipc=host --name entity_container --network san_net -v /path/sanproject/:/code/ san_image:latest python3 model/main_sigir.py -dataset=mes 
+docker run --rm -ti --gpus '"device=0"' --ipc=host --name entity_container --network san_net -v /path/sanproject/:/code/ san_image:latest python3 model/main.py -dataset=mes 
 ```
 
 To test the model:
 
 ```
-docker run --rm -ti --gpus '"device=0"' --ipc=host --name entity_container --network san_net -v /path/sanproject/:/code/ san_image:latest python3 model/main_sigir.py -dataset=mes -test
+docker run --rm -ti --gpus '"device=0"' --ipc=host --name entity_container --network san_net -v /path/sanproject/:/code/ san_image:latest python3 model/main.py -dataset=mes -test
 ```
 To test the model in semi- and inductive setupd:
 
 ```
-docker run --rm -ti --gpus '"device=0"' --ipc=host --name entity_container --network san_net -v /path/sanproject/:/code/ san_image:latest python3 model/main_sigir.py -dataset=mes -test
+docker run --rm -ti --gpus '"device=0"' --ipc=host --name entity_container --network san_net -v /path/sanproject/:/code/ san_image:latest python3 model/main.py -dataset=mes -test
 -inductive_type=light
 ```
 ```
-docker run --rm -ti --gpus '"device=0"' --ipc=host --name entity_container --network san_net -v /path/sanproject/:/code/ san_image:latest python3 model/main_sigir.py -dataset=mes -test
+docker run --rm -ti --gpus '"device=0"' --ipc=host --name entity_container --network san_net -v /path/sanproject/:/code/ san_image:latest python3 model/main.py -dataset=mes -test
 -inductive_type=full
 ```
 
 To test the model removing different splits of datasets metadata add the split param setting it to the preferred value (the value is a percentage):
 ```
-docker run --rm -ti --gpus '"device=0"' --ipc=host --name entity_container --network san_net -v /path/sanproject/:/code/ san_image:latest python3 model/main_sigir.py -dataset=mes -test
+docker run --rm -ti --gpus '"device=0"' --ipc=host --name entity_container --network san_net -v /path/sanproject/:/code/ san_image:latest python3 model/main.py -dataset=mes -test
 -split=25
 ```
 
