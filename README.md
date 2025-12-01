@@ -1,6 +1,6 @@
 # Code for MM-SAN 
 This repository contains the code of MM-SAN, proposed as full paper at TORS.
-MES and PubMed datasets are anonymous and available on [Figshare](https://figshare.com/s/f37d228558c0cb75c9ae?file=56825474)
+MES and PubMed datasets are anonymous and available on [Figshare](https://doi.org/10.6084/m9.figshare.26661382.v1)
 
 ## Project structure
 The main folder of the project is MM-SAN-main. 
