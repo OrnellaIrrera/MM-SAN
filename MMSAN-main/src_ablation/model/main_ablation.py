@@ -8,9 +8,9 @@ import os
 import psutil
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import torch.nn as nn
-import loader_simpler
+import loader
 import sampler
-from loader_simpler import *
+from loader import *
 import tqdm
 from sklearn.metrics import roc_auc_score, average_precision_score, f1_score
 from utils import EarlyStoppingClass
@@ -107,23 +107,24 @@ class Trainer:
         print(f'device: {self.device}')
         self.args = args
 
-        train_dataset = loader_simpler.ScholarlyDataset(root=f'datasets/{args.dataset}/')
+        train_dataset = loader.ScholarlyDataset(root=f'datasets/{args.dataset}/')
 
         self.train_root = train_dataset.root
         self.dataset = train_dataset[0]
         if args.no_metadata:
-            self.dataset['dataset'].x = torch.ones(self.dataset['dataset'].x.shape[0], 100)
+            self.dataset['dataset'].x = torch.ones(self.dataset['dataset'].x.shape[0], 384)
 
         if args.split > 0:
             print("SPLIT > 0")
             # Sostituire i valori di .x per i nodi campionati
             sampled_indices = torch.randperm(self.dataset['dataset'].num_nodes)[
                               :int(args.split / 100 * self.dataset['dataset'].num_nodes)]
-            # repeated_embeddings = load_embeddings("model/empty_embedding.pkl")
-            # repeated_embeddings = np.tile(repeated_embeddings, (len(sampled_indices), 1))
-            # repeated_embeddings_tensor = torch.tensor(repeated_embeddings, dtype=torch.float)
-            # self.dataset['dataset'].x[sampled_indices] = repeated_embeddings_tensor
-            self.dataset['dataset'].x[sampled_indices] = torch.ones(len(sampled_indices), 100)
+
+            repeated_embeddings = load_embeddings("model/empty_embedding.pkl")
+            repeated_embeddings = np.tile(repeated_embeddings, (len(sampled_indices), 1))
+            repeated_embeddings_tensor = torch.tensor(repeated_embeddings, dtype=torch.float)
+            self.dataset['dataset'].x[sampled_indices] = repeated_embeddings_tensor
+            self.dataset['dataset'].x[sampled_indices] = torch.ones(len(sampled_indices), 384)
 
         if args.reverse_split > 0:
 
@@ -157,20 +158,41 @@ class Trainer:
         self.model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.lr, weight_decay=args.wd)
 
-   
+    def get_walks_0(self):
+
+        os.makedirs('./model/data/', exists_ok=True)
+        if not os.path.exists(f'./model/data/{self.args.dataset}_transductive_paths.txt'):
+            f = open(f'./model/data/{self.args.dataset}_transductive_paths.txt', 'w')
+
+            all_walks = self.walker.create_random_walks(all=True)
+            for walk in all_walks:
+                f.write(' '.join(walk))
+                f.write('\n')
+            f.close()
+        else:
+            self.walker.set_seeds()
+            f = open(f'./model/data/{self.args.dataset}_test_walks.txt', 'r')
+            all_walks = f.readlines()
+            all_walks = [w.split() for w in all_walks]
+            print(f'walks: {len(all_walks)}')
+        assert all_walks != []
+        return all_walks
+
 
     def get_walks(self, block=None):
         """Genera (o carica da cache) il dizionario seed -> lista di walk.
         `block` identifica il gruppo di 10 epoch corrente, così se il training
         viene interrotto e ripreso a metà blocco, si riusa la stessa cache
         invece di rigenerarla."""
-        os.makedirs('./model/data_simpler/', exist_ok=True)
+        os.makedirs('./model/data/', exist_ok=True)
 
         cache_key = (f'{self.args.dataset}_torem-{self.args.nodes_to_remove}'
                      f'_split-{self.args.split}_enriched-{self.args.enriched}')
         if block is not None:
             cache_key += f'_block-{block}'
-        cache_path = f'./model/data_simpler/{cache_key}_transductive_paths.pkl'
+        cache_path = f'./model/data/{cache_key}_transductive_paths.pkl'
+        if args.nodes_to_remove != '':
+            cache_path = f'./model/data/{cache_key}_{args.nodes_to_remove}___transductive_paths.pkl'
 
         if not os.path.exists(cache_path):
             print(f'[walks cache] non trovata, genero e salvo in {cache_path}')
@@ -285,7 +307,7 @@ class Trainer:
             auc_tot = 0
             ap_tot = 0
             f1_tot = 0
-            # if not os.path.exists(f'./model/data_simpler/test_walks/{self.args.dataset}_best_test_paths.txt'):
+            # if not os.path.exists(f'./model/data/test_walks/{self.args.dataset}_best_test_paths.txt'):
             range_s = 40
             if self.args.dataset == 'pubmed':
                 range_s = 30
@@ -301,7 +323,10 @@ class Trainer:
                 sources = list(self.y_test_true_labels.keys())
                 neg_sources = list(test_negative_pd_edges[0].tolist())
                 datasets = list(self.dataset['dataset'].mapping.keys())
-
+                # pos_source = [self.dataset['publication'].rev_mapping[j] for j in sources]
+                # neg_source = [self.dataset['publication'].rev_mapping[j] for j in neg_sources]
+                # all_seeds = pos_source + neg_source + datasets
+                # print(len(datasets), len(pos_source), len(neg_source), len(all_seeds))
                 datasets = list(self.dataset['dataset'].mapping.keys())
                 pos_source = [self.dataset['publication'].rev_mapping[j] for j in sources]
                 neg_source = [self.dataset['publication'].rev_mapping[j] for j in neg_sources]
@@ -317,15 +342,6 @@ class Trainer:
                 # pos_source = [s for s in pos_source if s in graph_nodes]
                 # neg_source = [s for s in neg_source if s in graph_nodes]
                 # all_seeds = pos_source + neg_source + datasets
-                # --------------------------------------------------------------------
-
-                self.walker.set_seeds(all_seeds)
-
-
-                # pos_source = [self.dataset['publication'].rev_mapping[j] for j in sources]
-                # neg_source = [self.dataset['publication'].rev_mapping[j] for j in neg_sources]
-                # all_seeds = pos_source + neg_source + datasets
-                # print(len(datasets), len(pos_source), len(neg_source), len(all_seeds))
 
                 print(len(datasets), len(pos_source), len(neg_source), len(all_seeds))
                 self.walker.set_seeds(all_seeds)
@@ -360,6 +376,7 @@ class Trainer:
                     all_walks = ff.readlines()
                     all_walks = [w.split() for w in all_walks]
                     ff.close()
+                #
                 walks = [w for w in all_walks]
                 all_walks = {seed: [] for seed in self.walker.G.nodes if
                              self.walker.is_publication(seed) or self.walker.is_dataset(seed)}
@@ -374,58 +391,16 @@ class Trainer:
                 selected_seeds_walks, selected_seeds_cores, selected_seeds_hubs_key, selected_seeds_hubs_top = self.walker.select_walks_mp(
                     all_walks)
 
-                # selected_seeds_walks_0 = [elemento for sottolista in selected_seeds_walks for elemento in sottolista]
-                # selected_seeds_walks_0 = [elemento for sottolista in selected_seeds_walks_0 for elemento in sottolista]
-                # selected_seeds_cores_0 = [elemento for sottolista in selected_seeds_cores for elemento in sottolista]
-                # selected_seeds_hubs_top_0 = [elemento for sottolista in selected_seeds_hubs_top for elemento in sottolista]
-                # selected_seeds_hubs_key_0 = [elemento for sottolista in selected_seeds_hubs_key for elemento in sottolista]
-                # print(selected_seeds_walks_0[0:5])
-                # print(selected_seeds_cores_0[0:5])
-                # print(selected_seeds_hubs_top_0[0:5])
-                # print(selected_seeds_hubs_key_0[0:5])
-                # if iter == 0:
-                #     selected_seeds_walks_1 = selected_seeds_walks_0
-                #     selected_seeds_cores_1 = selected_seeds_cores_0
-                #     selected_seeds_hubs_top_1 = selected_seeds_hubs_top_0
-                #     selected_seeds_hubs_key_1 = selected_seeds_hubs_key_0
-                # if iter == 1:
-                #     for i,j in zip(selected_seeds_walks_0, selected_seeds_walks_1):
-                #         if i != j:
-                #             print('attenzione walk')
-                #
-                #     for i, j in zip(selected_seeds_cores_0, selected_seeds_cores_1):
-                #         if i != j:
-                #             print('attenzione core')
-                #
-                #     for i, j in zip(selected_seeds_hubs_top_0, selected_seeds_hubs_top_1):
-                #         if i != j:
-                #             print('attenzione top')
-                #
-                #     for i, j in zip(selected_seeds_hubs_key_0, selected_seeds_hubs_key_1):
-                #         if i != j:
-                #             print('attenzione key')
 
                 seed_vectors, seed_vectors_net, net_cores, cores, net_keys, keys, net_hubs, hubs, _, _, _, _, _, _, _, _ = self.walker.get_neighbours_vector(
                     selected_seeds_cores,
                     selected_seeds_hubs_key,
                     selected_seeds_hubs_top)
-                # print(seed_vectors[0:5])
-                # print(seed_vectors_net[0:5])
-                # print(net_cores[0:5])
+
                 k = [tuple([sublist[0], sublist[1]]) for lista in keys for sublist in lista]
                 k = sorted(k, key=lambda tup: (tup[0], tup[1]))
-                k_path = "./model/data_simpler/test_walks/keys0.json"
+                k_path = "./model/data/test_walks/keys0.json"
 
-                # Se i pesi non sono stati ancora salvati, salvali
-                # if not os.path.exists(k_path):
-                #     json.dump(k, open(k_path, 'w'))
-                # else:
-                #     kk = json.load(open(k_path, 'r'))
-                #     for i,j in zip(k,kk):
-                #         if tuple(i) != tuple(j):
-                #             print(f'different: {i}, {j}')
-                # print(keys[0:1])
-                # print(hubs[0:1])
                 seed_pos = {s: i for i, s in enumerate(all_seeds)}
                 pos_source_indices = [seed_pos[j] for j in pos_source]
                 pos_target_indices = [seed_pos[j] for j in datasets]
@@ -440,7 +415,8 @@ class Trainer:
                                               key_agg=self.args.key_aggregation, top_agg=self.args.top_aggregation,
                                               all_agg=self.args.all_aggregation)
 
-                weights_path = "./model/data_simpler/test_walks/initial_weights.pth"
+
+                weights_path = "./model/data/test_walks/initial_weights.pth"
 
                 # Se i pesi non sono stati ancora salvati, salvali
                 if not os.path.exists(weights_path):
@@ -450,24 +426,14 @@ class Trainer:
                     saved_weights = torch.load(weights_path)
 
                     equal = True
-                    # for (name, param), (saved_name, saved_param) in zip(self.model.named_parameters(),
-                    #                                                     saved_weights.items()):
-                    #     if not torch.equal(param.detach().cpu(), saved_param.cpu()):
-                    #         equal = False
-                    #         print(f"Differenza trovata nel parametro: {name}")
-                    #         # Confronto vettore per vettore nel tensore
-                    #         for i in range(param.numel()):  # numel() restituisce il numero totale di elementi nel tensore
-                    #             if param.view(-1)[i] != saved_param.view(-1)[i]:
-                    #                 print(
-                    #                     f"Valore differente in posizione {i}: {param.view(-1)[i]} vs {saved_param.view(-1)[i]}")
-                    #                 break  # Esce dal loop se trova una differenza
+
 
                     if equal:
                         print("Tutti i pesi sono identici!")
                     else:
                         print("Ci sono differenze nei pesi!")
 
-                file_path = "./model/data_simpler/test_walks/final_embeddings.pkl"
+                file_path = "./model/data/test_walks/final_embeddings.pkl"
 
                 # Save the embeddings
                 if not os.path.exists(file_path):
@@ -476,32 +442,13 @@ class Trainer:
                 else:
                     embs = pickle.load(open(file_path, "rb"))
                     equal = torch.equal(final_embeddings.detach().cpu(), embs.detach().cpu())
-                    # print("Sono identici:", equal)
-                    # for i in range(final_embeddings.shape[0]):
-                    # equal = torch.allclose(final_embeddings.detach().cpu()[i], embs.detach().cpu()[i], atol=1e-3)
-                    # torch.equal(final_embeddings.detach().cpu()[i], embs.detach().cpu()[i])
-                    # if not equal:
 
-                    # print(f"Vettore {i} diverso!")
-                    #
-                    # print("Final_embeddings:", final_embeddings[i])
-                    # print("Embs:", embs[i])
-                    # indices_diff = (final_embeddings.detach().cpu()[i] != embs.detach().cpu()[i]).nonzero(as_tuple=True)[0]
-                    #
-                    # # Visualizza gli indici e i valori diversi
-                    # for idx in indices_diff:
-                    #     print(
-                    #         f"Indice {idx.item()}: Final_embeddings = {final_embeddings.detach().cpu()[i][idx].item()}, Embs = {embs.detach().cpu()[i][idx].item()}")
-                    # break
-                # print(final_embeddings[0:3])
                 # Calcola il prodotto scalare tra gli embeddings normalizzati
                 pub_embeddings = F.normalize(final_embeddings[pos_source_indices], p=2, dim=1)
                 data_embeddings = F.normalize(final_embeddings[pos_target_indices], p=2, dim=1)
-                # print(pub_embeddings[10:30])
-                # print(data_embeddings[10:30])
                 final_matrix = torch.mm(pub_embeddings, data_embeddings.t())
-                # final_matrix = torch.sigmoid(final_matrix)
-                # print(final_matrix)
+                final_matrix = torch.sigmoid(final_matrix)
+
                 top_values, top_indices = torch.topk(final_matrix, k=10, dim=1)
                 # print(top_values)
                 y_test_predicted_labels_norerank = {source: [] for source in sources}
@@ -581,6 +528,7 @@ class Trainer:
                         mrr, no_rer_mrr = 0, 0
                         for source in sources:
                             true = self.y_test_true_labels[source]
+                            #print(f"source={self.dataset['publication'].rev_mapping[source]}: {[self.dataset['dataset'].rev_mapping[i] for i in y_test_predicted_labels_norerank[source][:topk]]} - {[self.dataset['dataset'].rev_mapping[j] for j in true]}")
                             pred_nonrer = y_test_predicted_labels_norerank[source][:topk]
                             no_rer_precision += len(list(set(pred_nonrer).intersection(true))) / topk
                             no_rer_recall += len(list(set(pred_nonrer).intersection(true))) / len(true)
@@ -588,15 +536,13 @@ class Trainer:
                             no_rer_mrr += mrr_at_k(true, pred_nonrer, topk)
 
                         print(f'results {topk}')
-                        print(f"precision: {no_rer_precision / len(sources)}")
-                        print(f"recall: {no_rer_recall / len(sources)}")
-                        print(f"ndcg: {no_rer_ndcg / len(sources)}")
-                        print(f"mrr: {no_rer_mrr / len(sources)}")
-        
-                        precisions.append(no_rer_precision / len(sources))
-                        recalls.append(no_rer_recall / len(sources))
-                        ndcgs.append(no_rer_ndcg / len(sources))
-                        mrrs.append(no_rer_mrr / len(sources))
+                        print(f"PRECISION {no_rer_precision / len(sources)}")
+                        print(f"RECALL {no_rer_recall / len(sources)}")
+                        print(f"NDCG {no_rer_ndcg / len(sources)}")
+                        print(f"MRR {no_rer_mrr / len(sources)}")
+                        print(no_rer_ndcg / len(sources))
+                        print(no_rer_mrr / len(sources))
+   
 
             # f.write(f'\ntype\n {type}')
             # f.write('LINK PREDICTION\n')
@@ -772,13 +718,14 @@ class Trainer:
 
         self.y_test_true_labels = {k: y_test_true_labels[k] for k in sorted(list(y_test_true_labels.keys()))}
 
-        stringa = f'SIMP_heads-{self.args.heads}_aggrcore-{self.args.core_aggregation}_aggrkeys-{self.args.key_aggregation}_aggrtop-{self.args.top_aggregation}_allagg-{self.args.all_aggregation}_loss-{args.loss}_split-{args.split}'
-        stringa = 'SIMP_unique_' + self.args.dataset + '_' + stringa
-        if self.args.no_aug:
-            stringa = 'SIMPLER_no_aug_unique_' + stringa
+        stringa = f'lr-{self.args.lr}_torem_{self.args.nodes_to_remove}_heads-{self.args.heads}_batch-{self.args.batch_size}_cores-{self.args.n_cores}_key-{self.args.n_keys_hubs}_top-{self.args.n_top_hubs}_aggrcore-{self.args.core_aggregation}_aggrkeys-{self.args.key_aggregation}_aggrtop-{self.args.top_aggregation}_allagg-{self.args.all_aggregation}_loss-{args.loss}_split-{args.split}_rev_split-{args.reverse_split}'
 
-        save_epoch_path = f'./model/checkpoint/transductive/models/{self.args.dataset}/{self.args.enriched}/SIMPLER_unique_last_checkpoint_{stringa}_last_epoch.pt'
-        save_early_path = f'./model/checkpoint/transductive/models/{self.args.dataset}/{self.args.enriched}/SIMPLER_unique_best_checkpoint_{stringa}.pt'
+        stringa = 'unique_' + self.args.dataset + '_' + stringa
+        if self.args.no_aug:
+            stringa = 'no_aug_unique_' + stringa
+
+        save_epoch_path = f'./model/checkpoint/transductive/models/{self.args.dataset}/{self.args.enriched}/unique_last_checkpoint_{stringa}_last_epoch.pt'
+        save_early_path = f'./model/checkpoint/transductive/models/{self.args.dataset}/{self.args.enriched}/unique_best_checkpoint_{stringa}.pt'
         os.makedirs(f'./model/checkpoint/transductive/models/{self.args.dataset}/{self.args.enriched}/', exist_ok=True)
 
         if self.args.eval_lr:
@@ -850,8 +797,8 @@ class Trainer:
 
         WALKS_REFRESH_EVERY = 10
         if self.args.train and not self.args.test:
-
             print('NEW TRAINING STARTED')
+
             for epoch in tqdm.tqdm(range(epochs + 1, self.args.epochs), desc="Epoch"):
                 self.cached_walks = None
                 p = psutil.Process(os.getpid())
@@ -942,8 +889,9 @@ class Trainer:
         if self.args.test:
             self.model.eval()
             with torch.no_grad():
-                stringa = f'SIMP_heads-{self.args.heads}_aggrcore-{self.args.core_aggregation}_aggrkeys-{self.args.key_aggregation}_aggrtop-{self.args.top_aggregation}_allagg-{self.args.all_aggregation}_loss-{args.loss}_split-{args.split}'
-                stringa = 'SIMP_unique_' + self.args.dataset + '_' + stringa
+                stringa = f'lr-{self.args.lr}_torem_{self.args.nodes_to_remove}_heads-{self.args.heads}_batch-{self.args.batch_size}_cores-{self.args.n_cores}_key-{self.args.n_keys_hubs}_top-{self.args.n_top_hubs}_aggrcore-{self.args.core_aggregation}_aggrkeys-{self.args.key_aggregation}_aggrtop-{self.args.top_aggregation}_allagg-{self.args.all_aggregation}_loss-{args.loss}_split-{args.split}_rev_split-{args.reverse_split}'
+                #stringa = f'lr-{self.args.lr}_torem_{self.args.nodes_to_remove}_heads-{self.args.heads}_batch-{self.args.batch_size}_cores-{self.args.n_cores}_key-{self.args.n_keys_hubs}_top-{self.args.n_top_hubs}_aggrcore-{self.args.core_aggregation}_aggrkeys-{self.args.key_aggregation}_aggrtop-{self.args.top_aggregation}_allagg-{self.args.all_aggregation}_loss-{args.loss}_split-{args.split}_rev_plit-{args.reverse_split}'
+                stringa = 'unique_' + self.args.dataset + '_' + stringa
                 if args.no_aug:
                     stringa = 'no_aug_unique_' + stringa
 
@@ -968,7 +916,9 @@ if __name__ == '__main__':
 
     # model - ABLATION
     args = get_args()
-    if args.eval_neigh or args.eval_all:
+    if args.sensitivity:
+
+        # number of neighbors
         args.eval_neigh = True
         for lr in [(12, 12, 10), (3, 3, 3), (8, 8, 5)]:
             args.n_cores = lr[0]
@@ -976,89 +926,63 @@ if __name__ == '__main__':
             args.n_top_hubs = lr[2]
             trainer = Trainer(args)
             trainer.run_transductive(type='trans')
-            # args.test = True
-            # trainer = Trainer(args)
-            # trainer.run_transductive(type='trans')
+            args.test = True
+            args.train = False
+            for type in ['trans', 'light', 'full']:
+                args.inductive_type = type
+                trainer = Trainer(args)
+                print(f'TYPE {type}, standard eval')
+                trainer.run_transductive(type=type)
 
-    args = get_args()
-    if args.eval_heads or args.eval_all:
+        # number of heads
+        args = get_args()
         args.eval_heads = True
         for lr in [1, 2, 4, 8, 16]:
             args.heads = lr
             trainer = Trainer(args)
             trainer.run_transductive(type='trans')
-            # args.test = True
-            # trainer = Trainer(args)
-            # trainer.run_transductive(type='trans')
+            args.test = True
+            args.train = False
+            for type in ['trans', 'light', 'full']:
+                args.inductive_type = type
+                trainer = Trainer(args)
+                print(f'TYPE {type}, standard eval')
+                trainer.run_transductive(type=type)
 
-    args = get_args()
-    seed_torch(args.random_seed)
-    if args.eval_lr or args.eval_all:
+        # learning rate
+        args = get_args()
+        seed_torch(args.random_seed)
         args.eval_lr = True
         for lr in [0.0001, 0.00001, 0.00005, 0.001]:
             args.lr = lr
             trainer = Trainer(args)
             trainer.run_transductive(type='trans')
-            # args.test = True
-            # trainer = Trainer(args)
-            # trainer.run_transductive(type='trans')
-
-    args = get_args()
-    if args.eval_batch or args.eval_all:
+            args.test = True
+            args.train = False
+            for type in ['trans', 'light', 'full']:
+                args.inductive_type = type
+                trainer = Trainer(args)
+                print(f'TYPE {type}, standard eval')
+                trainer.run_transductive(type=type)
+        # batch size
+        args = get_args()
         lrs = [64, 256, 4096]
         args.eval_batch = True
         for lr in lrs:
             args.batch_size = lr
             trainer = Trainer(args)
             trainer.run_transductive(type='trans')
-            # args.test = True
-            # trainer = Trainer(args)
-            # trainer.run_transductive(type='trans')
-
-    args = get_args()
-    if args.eval_aggregation or args.eval_all:
-
-        args.eval_aggregation = True
-        for lr in ['gru', 'lstm', 'linear', 'mh-attention']:
-            print('AGGREGATION: ', lr)
-            args.core_aggregation = lr
-            args.key_aggregation = lr
-            args.top_aggregation = lr
-            trainer = Trainer(args)
-            trainer.run_transductive(type='trans')
-            # args.test = True
-            # trainer = Trainer(args)
-            # trainer.run_transductive(type='trans')
-
-    args = get_args()
-    if args.eval_combine_aggregation or args.eval_all:
-        args.eval_combine_aggregation = True
-        for lr in ['mh-attention', 'gru', 'lstm', 'mean']:
-            args.all_aggregation = lr
-            trainer = Trainer(args)
-            trainer.run_transductive(type='trans')
-
-    # if args.hetgnn and args.train:
-    #     # hetgnn
-    #     args = get_args()
-    #     args.epochs = 100
-    #     args.batch_size = 1024
-    #     args.core_aggregation = 'lstm'
-    #     args.key_aggregation = 'lstm'
-    #     args.top_aggregation = 'lstm'
-    #     args.all_aggregation = 'mh-attention'
-    #     args.heads = 1
-    #     trainer = Trainer(args)
-    #     trainer.run_transductive(type='trans')
-    #     if args.dataset =='mes' and args.no_metadata == False:
-    #         args.no_metadata = True
-    #         trainer = Trainer(args)
-    #         trainer.run_transductive(type='trans')
+            args.test = True
+            args.train = False
+            for type in ['trans', 'light', 'full']:
+                args.inductive_type = type
+                trainer = Trainer(args)
+                print(f'TYPE {type}, standard eval')
+                trainer.run_transductive(type=type)
 
     # TRAINING CLASSICO
 
     if args.train:
-        print('ITS SIMPLER!!!')
         args = get_args()
         print("DATASET", args.dataset)
         print("TO REM", args.nodes_to_remove)
@@ -1069,46 +993,121 @@ if __name__ == '__main__':
         print("AGGRE", args.key_aggregation)
         print("AGGRE", args.core_aggregation)
         # CLASSICO
-        trainer = Trainer(args)
-        trainer.run_transductive(type='trans')
-
-        # RIMUOVO TOPIC
-        # args = get_args()
-        # args.nodes_to_remove = 'topic'
-        # print(f'training no {args.nodes_to_remove}')
-        # trainer = Trainer(args)
-        # trainer.run_transductive(type='trans')
-
-        # # RIMUOVO ENTITY
-        # args = get_args()
-        # args.nodes_to_remove = 'entity'
-        # print(f'training no {args.nodes_to_remove}')
-        # trainer = Trainer(args)
-        # trainer.run_transductive(type='trans')
-        #
-        # print(f'TRAINING WITH: {args.dataset}')
-        # for lr in ['mh-attention','gru', 'lstm', 'mean']:
-        #     print('COMBINATION: ',lr)
-        #     args.all_aggregation = lr
-        #     trainer = Trainer(args)
-        #     trainer.run_transductive(type='trans')
-        #
-        # args = get_args()
-        # for lr in ['gru', 'lstm','linear','mh-attention']:
-        #     print('AGGREGATION: ',lr)
-        #     args.core_aggregation = lr
-        #     args.key_aggregation = lr
-        #     args.top_aggregation = lr
-        #     trainer = Trainer(args)
-        #     trainer.run_transductive(type='trans')
-
-    args = get_args()
-    args.test = True
-    args.train = False
-    for split in [0,25,50,75]:
-        for type in ['trans','light','full']:
-            args.inductive_type = type
-            args.split = split
-            print(f'TYPE {type}, standard eval')
+        if not args.ablation:
             trainer = Trainer(args)
-            trainer.run_transductive(type=type)
+            trainer.run_transductive(type='trans')
+        # split diversi
+            args = get_args()
+            args.test = True
+            trainer = Trainer(args)
+            for split in [0, 25, 50, 75]:
+                args.split = split
+                print(args)
+                trainer = Trainer(args)
+                trainer.run_transductive(type='trans')
+                args.test = True
+                args.train = False
+                for type in ['trans', 'light', 'full']:
+                    args.inductive_type = type
+                    trainer = Trainer(args)
+                    print(f'TYPE {type}, standard eval')
+                    trainer.run_transductive(type=type)
+
+
+
+
+            # IN THIS CASE I MASK TOPOLOGICAL EMBEDDINGS INSTEAD OF TEXTUAL ONES
+            for split in [0, 25, 50, 75]:
+                args.reverse_split = split
+                print(args)
+                trainer = Trainer(args)
+
+                print(f'TYPE {type}, standard eval')
+                trainer.run_transductive(type="trans")
+                args.test = True
+                args.train = False
+                for type in ['trans', 'light', 'full']:
+                    args.inductive_type = type
+                    trainer = Trainer(args)
+                    print(f'TYPE {type}, standard eval')
+                    trainer.run_transductive(type=type)
+
+            # REMOVE TOPIC NODES (W/O AUGMENTATION)
+            args = get_args()
+            args.nodes_to_remove = 'topic'
+            print(f'training no {args.nodes_to_remove}')
+            trainer = Trainer(args)
+            trainer.run_transductive(type='trans')
+            args.test = True
+            args.train = False
+            for type in ['trans', 'light', 'full']:
+                args.inductive_type = type
+                trainer = Trainer(args)
+                print(f'TYPE {type}, standard eval')
+                trainer.run_transductive(type=type)
+
+            # REMOVE ENTITY NODES (W/O AUGMENTATION)
+            args = get_args()
+            args.nodes_to_remove = 'entity'
+            print(f'training no {args.nodes_to_remove}')
+            trainer = Trainer(args)
+            trainer.run_transductive(type='trans')
+            args.test = True
+            args.train = False
+            for type in ['trans', 'light', 'full']:
+                args.inductive_type = type
+                trainer = Trainer(args)
+                print(f'TYPE {type}, standard eval')
+                trainer.run_transductive(type=type)
+
+            # REMOVE ENTITY AND TOPIC NODES (W/O AUGMENTATION)
+            args = get_args()
+            args.nodes_to_remove = 'all'
+            print(f'training no {args.nodes_to_remove}')
+            trainer = Trainer(args)
+            trainer.run_transductive(type='trans')
+            args.test = True
+            args.train = False
+            for type in ['trans', 'light', 'full']:
+                args.inductive_type = type
+                trainer = Trainer(args)
+                print(f'TYPE {type}, standard eval')
+                trainer.run_transductive(type=type)
+
+            # COMBINATION (W/O AUGMENTATION)
+            print(f'TRAINING WITH: {args.dataset}')
+            for lr in ['mh-attention','gru', 'lstm', 'mean']:
+                print('COMBINATION: ',lr)
+                args.all_aggregation = lr
+                trainer = Trainer(args)
+                trainer.run_transductive(type='trans')
+                args.test = True
+                args.train = False
+                for type in ['trans', 'light', 'full']:
+                    args.inductive_type = type
+                    trainer = Trainer(args)
+                    print(f'TYPE {type}, standard eval')
+                    trainer.run_transductive(type=type)
+
+            # AGGREGATION (W/O AUGMENTATION)
+            args = get_args()
+            for lr in ['gru', 'lstm','linear','mh-attention']:
+                print('AGGREGATION: ',lr)
+                args.core_aggregation = lr
+                args.key_aggregation = lr
+                args.top_aggregation = lr
+                trainer = Trainer(args)
+                trainer.run_transductive(type='trans')
+                args.test = True
+                args.train = False
+                for type in ['trans', 'light', 'full']:
+                    args.inductive_type = type
+                    trainer = Trainer(args)
+                    print(f'TYPE {type}, standard eval')
+                    trainer.run_transductive(type=type)
+
+
+
+
+
+

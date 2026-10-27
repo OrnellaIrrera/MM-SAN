@@ -1,15 +1,13 @@
 import os
 import torch.nn as nn
 import args_list
-from sampler_sigir import RandomWalkWithRestart
+from sampler import RandomWalkWithRestart
 import torch
 import torch.nn.functional as F
 import numpy as np
 import random
 import pickle
 from torch_geometric import seed_everything
-
-
 def seed_torch(seed=42):
     random.seed(seed)
     seed_everything(seed)
@@ -24,10 +22,10 @@ def seed_torch(seed=42):
     torch.use_deterministic_algorithms(True)
 
 
-# seed_torch()
+#seed_torch()
 
 class CosineSimilarityAttention(nn.Module):
-    def __init__(self, input_dim, hidden_dim):
+    def __init__(self, input_dim,hidden_dim):
         super(CosineSimilarityAttention, self).__init__()
         self.input_dim = input_dim
         self.fc = nn.Linear(input_dim, hidden_dim)
@@ -55,7 +53,7 @@ class CosineSimilarityAttention(nn.Module):
 
 
 class ScHetGNN(nn.Module):
-    def __init__(self, args):
+    def __init__(self,args):
         super(ScHetGNN, self).__init__()
         self.args = args
         numero_casuale = random.random()
@@ -65,15 +63,12 @@ class ScHetGNN(nn.Module):
         # else:
         # self.device = 'cpu'
         # print(self.device)
-        self.lstm_core_aggregator = nn.LSTM(512, int(args.embedding_dim / 2), args.lstm_layers, bidirectional=True)
-        self.lstm_core_net_aggregator = nn.LSTM(args.top_dim, int(args.embedding_dim / 2), args.lstm_layers,
-                                                bidirectional=True)
-        self.lstm_key_aggregator = nn.LSTM(896, int(args.embedding_dim / 2), args.lstm_layers, bidirectional=True)
-        self.lstm_key_net_aggregator = nn.LSTM(args.top_dim, int(args.embedding_dim / 2), args.lstm_layers,
-                                               bidirectional=True)
-        self.lstm_top_aggregator = nn.LSTM(896, int(args.embedding_dim / 2), args.lstm_layers, bidirectional=True)
-        self.lstm_aggregator = nn.LSTM(args.embedding_dim, int(args.embedding_dim / 2), args.lstm_layers,
-                                       bidirectional=True)
+        self.lstm_core_aggregator = nn.LSTM(512, int(args.embedding_dim/2), args.lstm_layers, bidirectional=True)
+        self.lstm_core_net_aggregator = nn.LSTM(args.top_dim, int(args.embedding_dim/2), args.lstm_layers, bidirectional=True)
+        self.lstm_key_aggregator = nn.LSTM(896,  int(args.embedding_dim/2), args.lstm_layers, bidirectional=True)
+        self.lstm_key_net_aggregator = nn.LSTM(args.top_dim,  int(args.embedding_dim/2), args.lstm_layers, bidirectional=True)
+        self.lstm_top_aggregator = nn.LSTM(896,  int(args.embedding_dim/2), args.lstm_layers, bidirectional=True)
+        self.lstm_aggregator = nn.LSTM(args.embedding_dim, int(args.embedding_dim/2), args.lstm_layers, bidirectional=True)
 
         self.gru_core_aggregator = nn.GRU(512, args.embedding_dim, args.gru_layers)
         self.gru_key_aggregator = nn.GRU(896, args.embedding_dim, args.gru_layers)
@@ -84,13 +79,15 @@ class ScHetGNN(nn.Module):
         self.multihead_cross_top_attn = nn.MultiheadAttention(args.embedding_dim, self.args.heads)
         self.multihead_cross_key_attn = nn.MultiheadAttention(args.embedding_dim, self.args.heads)
 
+
         self.multihead_core_attn = nn.MultiheadAttention(args.core_dim, self.args.heads)
         self.multihead_core_net_attn = nn.MultiheadAttention(args.top_dim, self.args.heads)
         self.multihead_key_attn = nn.MultiheadAttention(args.key_dim, self.args.heads)
         self.multihead_key_net_attn = nn.MultiheadAttention(args.top_dim, self.args.heads)
         self.multihead_top_net_attn = nn.MultiheadAttention(args.top_dim, self.args.heads)
-        self.multihead_top_attn = nn.MultiheadAttention(args.key_dim, self.args.heads)
+        self.multihead_top_attn = nn.MultiheadAttention(args.key_dim,self.args.heads)
         self.multihead_attn = nn.MultiheadAttention(args.embedding_dim, self.args.heads)
+
 
         self.multihead_attn_core = nn.MultiheadAttention(args.embedding_dim, self.args.heads)
         self.multihead_attn_key = nn.MultiheadAttention(args.embedding_dim, self.args.heads)
@@ -100,7 +97,8 @@ class ScHetGNN(nn.Module):
         self.multihead_attn_key_concat = nn.MultiheadAttention(896, self.args.heads)
         self.multihead_attn_top_concat = nn.MultiheadAttention(896, self.args.heads)
 
-        self.multihead_cross_att = nn.MultiheadAttention(args.embedding_dim * 3, self.args.heads)
+
+        self.multihead_cross_att = nn.MultiheadAttention(args.embedding_dim*3, self.args.heads)
 
         self.attention_core = CosineSimilarityAttention(args.core_dim, args.embedding_dim)
         self.attention_key = CosineSimilarityAttention(args.key_dim, args.embedding_dim)
@@ -117,8 +115,9 @@ class ScHetGNN(nn.Module):
         self.key_linear_projection_concat = nn.Linear(896, args.embedding_dim)
         self.core_linear_projection_concat = nn.Linear(512, args.embedding_dim)
 
+
         self.act = torch.nn.LeakyReLU()
-        # self.init_weights()
+        #self.init_weights()
 
     def init_weights(self):
         for m in self.modules():
@@ -148,38 +147,40 @@ class ScHetGNN(nn.Module):
                     elif 'bias' in name:
                         nn.init.constant_(param, 0)
 
-    def aggregate_same_type_neigh(self, seed_vectors, seed_net_vectors, neigh_embeddings, neigh_net_embeddings,
-                                  agg_type, type_emb='core'):
-        embeddings = [lista for i, lista in
-                      enumerate(neigh_embeddings)]  # appendo il target vector, utile nell'aggregazione finale
-        queries = []
-        for ind, e in enumerate(embeddings):
-            seed = seed_vectors[ind]
-            queries.append(seed)
-        queries = [[emb[-1]] for emb in queries]
-        queries_tensors = [torch.stack(t) for t in queries]
-        embeddings_tensors = [[emb[-1] for emb in lista] for lista in embeddings]
-        embeddings_tensors = [torch.stack(t) for t in embeddings_tensors]
 
-        concatenated_queries_matt = torch.stack(queries_tensors, dim=0)
-        concatenated_embeddings_matt = torch.stack(embeddings_tensors, dim=0)
-        concatenated_embeddings_matt = torch.transpose(concatenated_embeddings_matt, 0, 1).to(self.device)
-        concatenated_queries_matt = torch.transpose(concatenated_queries_matt, 0, 1).to(self.device)
+
+    def aggregate_same_type_neigh(self,seed_vectors,seed_net_vectors,neigh_embeddings,neigh_net_embeddings,agg_type,type_emb='core'):
+        embeddings = [lista for i, lista in enumerate(neigh_embeddings)]  # appendo il target vector, utile nell'aggregazione finale
 
         if agg_type == 'mh-attention' and (type_emb == 'core' or type_emb == 'core_net'):
+            # prima era fuori
+
+            queries = []
+            for ind, e in enumerate(embeddings):
+                seed = seed_vectors[ind]
+                queries.append(seed)
+            queries = [[emb[-1]] for emb in queries]
+            queries_tensors = [torch.stack(t) for t in queries]
+            embeddings_tensors = [[emb[-1] for emb in lista] for lista in embeddings]
+            embeddings_tensors = [torch.stack(t) for t in embeddings_tensors]
+
+            concatenated_queries_matt = torch.stack(queries_tensors, dim=0)
+            concatenated_embeddings_matt = torch.stack(embeddings_tensors, dim=0)
+            concatenated_embeddings_matt = torch.transpose(concatenated_embeddings_matt, 0, 1).to(self.device)
+            concatenated_queries_matt = torch.transpose(concatenated_queries_matt, 0, 1).to(self.device)
+
+
+
             if type_emb == 'core':
-                output, _ = self.multihead_core_attn(concatenated_queries_matt.to(self.device),
-                                                     concatenated_embeddings_matt.to(self.device),
-                                                     concatenated_embeddings_matt.to(self.device))
+                output, _ = self.multihead_core_attn(concatenated_queries_matt.to(self.device),concatenated_embeddings_matt.to(self.device),concatenated_embeddings_matt.to(self.device))
                 output = output[0, :, :]
                 output = self.act(self.core_linear_projection(output.to(self.device)))
 
             if type_emb == 'core_net':
-                output, _ = self.multihead_core_net_attn(concatenated_queries_matt.to(self.device),
-                                                         concatenated_embeddings_matt.to(self.device),
-                                                         concatenated_embeddings_matt.to(self.device))
+                output, _ = self.multihead_core_net_attn(concatenated_queries_matt.to(self.device),concatenated_embeddings_matt.to(self.device),concatenated_embeddings_matt.to(self.device))
                 output = output[0, :, :]
                 output = self.act(self.core_net_linear_projection(output.to(self.device)))
+
 
             if self.args.verbose:
                 print(f'output {output.shape}')
@@ -220,7 +221,7 @@ class ScHetGNN(nn.Module):
 
         elif agg_type == 'linear':
             if self.args.verbose:
-                print('output size', concatenated_embeddings_matt.shape)
+                print('output size',concatenated_embeddings_matt.shape)
             if type_emb == 'core':
                 output = self.core_linear_projection(concatenated_embeddings_matt)
             elif type_emb == 'core_net':
@@ -234,10 +235,10 @@ class ScHetGNN(nn.Module):
             else:
                 output = self.top_linear_projection(concatenated_embeddings_matt)
             if self.args.verbose:
-                print('output size', output.shape)
+                print('output size',output.shape)
             output = torch.mean(output, dim=0)
             if self.args.verbose:
-                print('output size', output.shape)
+                print('output size',output.shape)
             return output
 
 
@@ -286,7 +287,7 @@ class ScHetGNN(nn.Module):
             if self.args.verbose:
                 print(f'output lstm {output.shape}')
 
-            return torch.mean(output, 0)
+            return torch.mean(output,0)
 
         elif agg_type == 'gru':
             embeddings = [lista for i, lista in
@@ -314,15 +315,14 @@ class ScHetGNN(nn.Module):
 
             if self.args.verbose:
                 print(f'output {output.shape}')
-            return torch.mean(output, 0)
+            return torch.mean(output,0)
 
-    def aggregate_same_type_neigh_cross(self, seed_vectors, seed_net_vectors, neigh_embeddings, neigh_net_embeddings,
-                                        type_emb='core'):
+    def aggregate_same_type_neigh_cross(self, seed_vectors,seed_net_vectors, neigh_embeddings, neigh_net_embeddings, type_emb='core'):
         embeddings = [lista for i, lista in
                       enumerate(neigh_embeddings)]  # appendo il target vector, utile nell'aggregazione finale
 
         embeddings_net = [lista for i, lista in
-                          enumerate(neigh_net_embeddings)]
+                      enumerate(neigh_net_embeddings)]
 
         embeddings_tensors = [[emb[-1] for emb in lista] for lista in embeddings_net]
         embeddings_tensors = [torch.stack(t) for t in embeddings_tensors]
@@ -331,6 +331,7 @@ class ScHetGNN(nn.Module):
         embeddings_query_tensors = [[emb[-1] for emb in lista] for lista in embeddings]
 
         embeddings_query_tensors = [torch.stack(t) for t in embeddings_query_tensors]
+
 
         concatenated_queries_matt = torch.stack(embeddings_query_tensors, dim=0)
 
@@ -341,69 +342,42 @@ class ScHetGNN(nn.Module):
             concatenated_queries_matt = self.core_linear_projection(concatenated_queries_matt)
 
             output, _ = self.multihead_cross_core_attn(concatenated_queries_matt.to(self.device),
-                                                       concatenated_embeddings_matt.to(self.device),
-                                                       concatenated_embeddings_matt.to(self.device))
+                                                 concatenated_embeddings_matt.to(self.device),
+                                                 concatenated_embeddings_matt.to(self.device))
 
             output = output[0, :, :]
-            file_path = "./model/data/test_walks/core_embeddings.pkl"
 
-            # Save the embeddings
-            if not os.path.exists(file_path):
-                with open(file_path, "wb") as f:
-                    pickle.dump(output.detach().cpu(), f)
-            else:
-                embs = pickle.load(open(file_path, "rb"))
-                equal = torch.equal(output.detach().cpu(), embs.detach().cpu())
-                print("Sono identici core:", equal)
 
 
         elif type_emb == 'key':
             concatenated_queries_matt = self.key_linear_projection(concatenated_queries_matt)
 
             output, _ = self.multihead_cross_key_attn(concatenated_queries_matt.to(self.device),
-                                                      concatenated_embeddings_matt.to(self.device),
-                                                      concatenated_embeddings_matt.to(self.device))
+                                                 concatenated_embeddings_matt.to(self.device),
+                                                 concatenated_embeddings_matt.to(self.device))
 
             output = output[0, :, :]
-            file_path = "./model/data/test_walks/key_embeddings.pkl"
 
-            # Save the embeddings
-            if not os.path.exists(file_path):
-                with open(file_path, "wb") as g:
-                    pickle.dump(output.detach().cpu(), g)
-            else:
-                embs = pickle.load(open(file_path, "rb"))
-                equal = torch.equal(output.detach().cpu(), embs.detach().cpu())
-                print("Sono identici key:", equal)
 
 
         elif type_emb == 'top':
             concatenated_queries_matt = self.top_linear_projection(concatenated_queries_matt)
 
             output, _ = self.multihead_cross_top_attn(concatenated_queries_matt.to(self.device),
-                                                      concatenated_embeddings_matt.to(self.device),
-                                                      concatenated_embeddings_matt.to(self.device))
+                                                 concatenated_embeddings_matt.to(self.device),
+                                                 concatenated_embeddings_matt.to(self.device))
 
             output = output[0, :, :]
-            file_path = "./model/data/test_walks/top_embeddings.pkl"
 
-            # Save the embeddings
-            if not os.path.exists(file_path):
-                with open(file_path, "wb") as gg:
-                    pickle.dump(output.detach().cpu(), gg)
-            else:
-                embs = pickle.load(open(file_path, "rb"))
-                equal = torch.equal(output.detach().cpu(), embs.detach().cpu())
-                print("Sono identici top:", equal)
         return output
 
-    def aggregate_same_type_neigh_mh(self, seed_vectors, seed_net_vectors, neigh_embeddings, neigh_net_embeddings,
-                                     type_emb='core'):
+    def aggregate_same_type_neigh_mh(self, seed_vectors,seed_net_vectors, neigh_embeddings, neigh_net_embeddings, type_emb='core'):
         embeddings = [lista for i, lista in
                       enumerate(neigh_embeddings)]  # appendo il target vector, utile nell'aggregazione finale
 
         embeddings_net = [lista for i, lista in
-                          enumerate(neigh_net_embeddings)]
+                      enumerate(neigh_net_embeddings)]
+
 
         embeddings_tensors = [[emb[-1] for emb in lista] for lista in embeddings_net]
         embeddings_tensors = [torch.stack(t) for t in embeddings_tensors]
@@ -421,58 +395,57 @@ class ScHetGNN(nn.Module):
         # print(concatenated_queries_matt.shape)
         # print(concatenated_embeddings_matt.shape)
         # print(concatenated_all_matt.shape)
-        # print(concatenated_all_matt.shape)
+        #print(concatenated_all_matt.shape)
 
         if type_emb == 'core':
             # concatenated_queries_matt = self.core_linear_projection(concatenated_queries_matt)
 
             output, _ = self.multihead_attn_core_concat(concatenated_all_matt.to(self.device),
-                                                        concatenated_all_matt.to(self.device),
-                                                        concatenated_all_matt.to(self.device))
+                                                 concatenated_all_matt.to(self.device),
+                                                 concatenated_all_matt.to(self.device))
             output = torch.mean(output, dim=0)
             print(f'output {output.shape}, {output}')
-            # output = output[0, :, :]
+            #output = output[0, :, :]
             output = self.act(self.core_linear_projection_concat(output.to(self.device)))
             print(f'output {output.shape}, {output}')
 
 
         elif type_emb == 'key':
-            # concatenated_queries_matt = self.key_linear_projection(concatenated_queries_matt)
+            #concatenated_queries_matt = self.key_linear_projection(concatenated_queries_matt)
 
             output, _ = self.multihead_attn_key_concat(concatenated_all_matt.to(self.device),
-                                                       concatenated_all_matt.to(self.device),
-                                                       concatenated_all_matt.to(self.device))
+                                                 concatenated_all_matt.to(self.device),
+                                                 concatenated_all_matt.to(self.device))
 
             output = torch.mean(output, dim=0)
             output = self.act(self.key_linear_projection_concat(output.to(self.device)))
 
         elif type_emb == 'top':
-            # concatenated_queries_matt = self.top_linear_projection(concatenated_queries_matt)
+            #concatenated_queries_matt = self.top_linear_projection(concatenated_queries_matt)
 
             output, _ = self.multihead_attn_top_concat(concatenated_all_matt.to(self.device),
-                                                       concatenated_all_matt.to(self.device),
-                                                       concatenated_all_matt.to(self.device))
+                                                 concatenated_all_matt.to(self.device),
+                                                 concatenated_all_matt.to(self.device))
 
             output = torch.mean(output, dim=0)
             output = self.act(self.top_linear_projection_concat(output.to(self.device)))
         return output
 
-    def combine_all(self, core_emb=None, key_emb=None, top_emb=None, cores_net_emb=None, key_net_emb=None,
-                    top_net_hub=None, aggr_type='concat'):
+    def combine_all(self,core_emb=None,key_emb=None,top_emb=None,cores_net_emb=None,key_net_emb=None,top_net_hub=None,aggr_type='concat'):
         if aggr_type == 'mh-attention':
 
             embeddings = [emb for emb in [core_emb, key_emb, top_emb] if emb is not None]
-            if cores_net_emb is not None and len(cores_net_emb) > 0:
-                embeddings = [emb for emb in [cores_net_emb, core_emb, key_emb, top_emb] if emb is not None]
-            if key_net_emb is not None and len(key_net_emb) > 0:
-                embeddings = [emb for emb in [cores_net_emb, core_emb, key_net_emb, key_emb] if emb is not None]
-            if top_net_hub is not None and len(top_net_hub) > 0:
-                embeddings = [emb for emb in [cores_net_emb, core_emb, key_net_emb, key_emb, top_net_hub, top_emb] if
-                              emb is not None]
+            if cores_net_emb is not None and len(cores_net_emb)>0:
+                embeddings = [emb for emb in [cores_net_emb,core_emb,key_emb,top_emb] if emb is not None]
+            if key_net_emb is not None and len(key_net_emb)>0:
+                embeddings = [emb for emb in [cores_net_emb,core_emb,key_net_emb,key_emb] if emb is not None]
+            if top_net_hub is not None and len(top_net_hub)>0:
+                embeddings = [emb for emb in [cores_net_emb,core_emb,key_net_emb,key_emb,top_net_hub,top_emb] if emb is not None]
 
-            output_stacked = torch.stack(embeddings, dim=0).to(self.device)
+
+            output_stacked = torch.stack(embeddings,dim=0).to(self.device)
             output, attention_weights = self.multihead_attn(output_stacked, output_stacked, output_stacked)
-            output = torch.mean(output, 0)
+            output = torch.mean(output,0)
             return output
 
         # aggiunto 18112024
@@ -483,7 +456,7 @@ class ScHetGNN(nn.Module):
             output_top, _ = self.multihead_attn_top(top_net_hub, top_emb, top_emb)
             output = [emb for emb in [output_core, output_key, output_top] if emb is not None]
             output = torch.cat(output, dim=1)
-            # output = torch.mean(output,0)
+            #output = torch.mean(output,0)
             return output
 
 
@@ -494,8 +467,9 @@ class ScHetGNN(nn.Module):
             output_graph = [emb for emb in [cores_net_emb, key_net_emb, top_net_hub] if emb is not None]
             output_graph = torch.cat(output_graph, dim=1)
 
+
             output, _ = self.multihead_cross_att(output_graph, output_txt, output_txt)
-            # output = torch.mean(output,0)
+            #output = torch.mean(output,0)
             return output
 
 
@@ -510,54 +484,51 @@ class ScHetGNN(nn.Module):
             embeddings = [emb for emb in [core_emb, key_emb, top_emb] if emb is not None]
             concat_emb = torch.stack(embeddings, dim=0)
             output, _ = self.lstm_aggregator(concat_emb.to(self.device))
-            return torch.mean(output, 0)
+            return torch.mean(output,0)
 
         elif aggr_type == 'gru':
-            embeddings = [emb for emb in [core_emb, key_emb, top_emb] if emb is not None]
+            embeddings = [emb for emb in [core_emb,key_emb,top_emb] if emb is not None]
             concat_emb = torch.stack(embeddings, dim=0)
             output, hnn = self.gru_aggregator(concat_emb.to(self.device))
-            return torch.mean(output, 0)
+            return torch.mean(output,0)
 
         elif aggr_type == 'concat':
             embeddings = [emb for emb in [core_emb, key_emb, top_emb] if emb is not None]
 
-            if cores_net_emb is not None and len(cores_net_emb) > 0:
-                embeddings = [emb for emb in [cores_net_emb, core_emb, key_emb, top_emb] if emb is not None]
-            if key_net_emb is not None and len(key_net_emb) > 0:
-                embeddings = [emb for emb in [cores_net_emb, core_emb, key_net_emb, key_emb] if emb is not None]
-            if top_net_hub is not None and len(top_net_hub) > 0:
-                embeddings = [emb for emb in [cores_net_emb, core_emb, key_net_emb, key_emb, top_net_hub, top_emb] if
-                              emb is not None]
 
-            emb = torch.cat(embeddings, dim=1)
+            if cores_net_emb is not None and len(cores_net_emb)>0:
+                embeddings = [emb for emb in [cores_net_emb,core_emb,key_emb,top_emb] if emb is not None]
+            if key_net_emb is not None and len(key_net_emb)>0:
+                embeddings = [emb for emb in [cores_net_emb,core_emb,key_net_emb,key_emb] if emb is not None]
+            if top_net_hub is not None and len(top_net_hub)>0:
+                embeddings = [emb for emb in [cores_net_emb,core_emb,key_net_emb,key_emb,top_net_hub,top_emb] if emb is not None]
+
+            emb = torch.cat(embeddings,dim=1)
             return emb
 
-    def forward(self, vectors, vectors_net, net_core_embeddings, core_embeddings, net_key_embeddings, key_embeddings,
-                net_top_embeddings, top_embeddings, core_agg='lstm', top_agg='lstm', key_agg='lstm', all_agg='concat'):
+
+    def forward(self,vectors,vectors_net,net_core_embeddings,core_embeddings,net_key_embeddings,key_embeddings,net_top_embeddings,top_embeddings,core_agg='lstm',top_agg='lstm',key_agg='lstm',all_agg='concat'):
         if core_agg == key_agg == top_agg == 'cross-attention':
-            core_embeddings = self.aggregate_same_type_neigh_cross(vectors, vectors_net, core_embeddings,
-                                                                   net_core_embeddings, type_emb='core')
-            key_embeddings = self.aggregate_same_type_neigh_cross(vectors, vectors_net, key_embeddings,
-                                                                  net_key_embeddings, type_emb='key')
-            top_embeddings = self.aggregate_same_type_neigh_cross(vectors, vectors_net, top_embeddings,
-                                                                  net_top_embeddings, type_emb='top')
-            final_embeddings = self.combine_all(core_embeddings, key_embeddings, top_embeddings, aggr_type=all_agg)
+            core_embeddings = self.aggregate_same_type_neigh_cross(vectors,vectors_net, core_embeddings,net_core_embeddings, type_emb='core')
+            key_embeddings = self.aggregate_same_type_neigh_cross(vectors,vectors_net, key_embeddings,net_key_embeddings, type_emb='key')
+            top_embeddings = self.aggregate_same_type_neigh_cross(vectors,vectors_net, top_embeddings,net_top_embeddings, type_emb='top')
+            final_embeddings = self.combine_all(core_embeddings, key_embeddings, top_embeddings,  aggr_type=all_agg)
             return final_embeddings
 
+
         if core_agg == key_agg == top_agg == 'mh-attention':
-            core_embeddings = self.aggregate_same_type_neigh_mh(vectors, vectors_net, core_embeddings,
-                                                                net_core_embeddings, type_emb='core')
-            key_embeddings = self.aggregate_same_type_neigh_mh(vectors, vectors_net, key_embeddings, net_key_embeddings,
-                                                               type_emb='key')
-            top_embeddings = self.aggregate_same_type_neigh_mh(vectors, vectors_net, top_embeddings, net_top_embeddings,
-                                                               type_emb='top')
-            final_embeddings = self.combine_all(core_embeddings, key_embeddings, top_embeddings, aggr_type=all_agg)
+            core_embeddings = self.aggregate_same_type_neigh_mh(vectors,vectors_net, core_embeddings,net_core_embeddings, type_emb='core')
+            key_embeddings = self.aggregate_same_type_neigh_mh(vectors,vectors_net, key_embeddings,net_key_embeddings, type_emb='key')
+            top_embeddings = self.aggregate_same_type_neigh_mh(vectors,vectors_net, top_embeddings,net_top_embeddings, type_emb='top')
+            final_embeddings = self.combine_all(core_embeddings, key_embeddings, top_embeddings,  aggr_type=all_agg)
             return final_embeddings
+
 
         if self.args.verbose:
             print(f'final cores dimension {core_embeddings.shape}')
             print(f'final key dimension {key_embeddings.shape}')
             print(f'final tops dimension {top_embeddings.shape}')
+
 
         # if self.args.enriched == 'enriched':
         #     core_net_embeddings = self.aggregate_same_type_neigh(vectors_net, net_core_embeddings, top_agg,
@@ -565,19 +536,16 @@ class ScHetGNN(nn.Module):
         #     final_embeddings = self.combine_all(core_embeddings,key_embeddings,top_embeddings,core_net_embeddings,aggr_type=all_agg)
         #
         if self.args.enriched == 'enriched_all':
-            key_embeddings = self.aggregate_same_type_neigh(vectors, vectors_net, key_embeddings, net_key_embeddings,
-                                                            key_agg, type_emb='key')
-            core_embeddings = self.aggregate_same_type_neigh(vectors, vectors_net, core_embeddings, net_core_embeddings,
-                                                             core_agg, type_emb='core')
-            top_embeddings = self.aggregate_same_type_neigh(vectors, vectors_net, top_embeddings, net_top_embeddings,
-                                                            top_agg, type_emb='top')
+            key_embeddings = self.aggregate_same_type_neigh(vectors,vectors_net, key_embeddings,net_key_embeddings, key_agg, type_emb='key')
+            core_embeddings = self.aggregate_same_type_neigh(vectors, vectors_net,core_embeddings,net_core_embeddings, core_agg, type_emb='core')
+            top_embeddings = self.aggregate_same_type_neigh(vectors,vectors_net, top_embeddings,net_top_embeddings, top_agg, type_emb='top')
 
             # core_net_embeddings = self.aggregate_same_type_neigh(vectors_net, net_core_embeddings, top_agg,
             #                                                      type_emb='core_net')
             # key_net_embeddings = self.aggregate_same_type_neigh(vectors_net, net_key_embeddings, top_agg, type_emb='key_net')
             # top_net_embeddings = self.aggregate_same_type_neigh(vectors_net, net_top_embeddings, top_agg, type_emb='top_net')
 
-            final_embeddings = self.combine_all(core_embeddings, key_embeddings, top_embeddings, aggr_type=all_agg)
+            final_embeddings = self.combine_all(core_embeddings,key_embeddings,top_embeddings,aggr_type=all_agg)
 
         # elif self.args.enriched == 'standard':
         #     final_embeddings = self.combine_all(core_embeddings,key_embeddings,top_embeddings,aggr_type=all_agg)
@@ -586,25 +554,23 @@ class ScHetGNN(nn.Module):
             print(f'final emb dimension {final_embeddings.shape}')
         return final_embeddings
 
-    def cross_entropy_loss(self, embeddings, pos_source, pos_target, neg_source, neg_target):
-        pos_embeddings_source, neg_embeddings_source = embeddings[pos_source], embeddings[neg_source]
-        pos_embeddings_target, neg_embeddings_target = embeddings[pos_target], embeddings[neg_target]
+    def cross_entropy_loss(self,embeddings,pos_source,pos_target,neg_source,neg_target):
+        pos_embeddings_source,neg_embeddings_source = embeddings[pos_source],embeddings[neg_source]
+        pos_embeddings_target,neg_embeddings_target = embeddings[pos_target],embeddings[neg_target]
 
-        pos_embeddings_source = pos_embeddings_source.view(pos_embeddings_source.size(0), 1,
-                                                           pos_embeddings_source.size(1))  # [batch_size, 1, embed_d]
-        neg_embeddings_source = neg_embeddings_source.view(neg_embeddings_source.size(0), 1,
-                                                           neg_embeddings_source.size(1))  # [batch_size, 1, embed_d]
-        pos_embeddings_target = pos_embeddings_target.view(pos_embeddings_target.size(0), pos_embeddings_target.size(1),
-                                                           1)  # [batch_size, embed_d, 1]
-        neg_embeddings_target = neg_embeddings_target.view(neg_embeddings_target.size(0), neg_embeddings_target.size(1),
-                                                           1)  # [batch_size, embed_d, 1]
+        pos_embeddings_source = pos_embeddings_source.view(pos_embeddings_source.size(0), 1, pos_embeddings_source.size(1))  # [batch_size, 1, embed_d]
+        neg_embeddings_source = neg_embeddings_source.view(neg_embeddings_source.size(0), 1, neg_embeddings_source.size(1))  # [batch_size, 1, embed_d]
+        pos_embeddings_target = pos_embeddings_target.view(pos_embeddings_target.size(0), pos_embeddings_target.size(1), 1)  # [batch_size, embed_d, 1]
+        neg_embeddings_target = neg_embeddings_target.view(neg_embeddings_target.size(0), neg_embeddings_target.size(1), 1)  # [batch_size, embed_d, 1]
 
         # Calcola la similarità (prodotto scalare) tra embedding positivi e negativi
         out_p = torch.bmm(pos_embeddings_source, pos_embeddings_target)  # [batch_size, 1, 1]
         out_n = -torch.bmm(neg_embeddings_source, neg_embeddings_target)  # [batch_size, 1, 1]
 
+
         sum_p = F.logsigmoid(out_p)
         sum_n = F.logsigmoid(out_n)
+
 
         loss_sum = - (sum_p + sum_n)
         return loss_sum.mean()
@@ -622,7 +588,7 @@ class ScHetGNN(nn.Module):
                                                            1)  # [batch_size, embed_d, 1]
         neg_embeddings_target = neg_embeddings_target.view(neg_embeddings_target.size(0), neg_embeddings_target.size(1),
                                                            1)  # [batch_size, embed_d, 1]
-
+        
         # Normalizza gli embedding (facoltativo, se gli embedding sono già normalizzati)
         # pos_embeddings_source = F.normalize(pos_embeddings_source, p=2, dim=1)
         # neg_embeddings_source = F.normalize(neg_embeddings_source, p=2, dim=1)
@@ -631,7 +597,7 @@ class ScHetGNN(nn.Module):
 
         # Calcola la similarità (prodotto scalare)
         out_p = torch.bmm(pos_embeddings_source, pos_embeddings_target)  # [batch_size, 1, 1]
-        out_n = -torch.bmm(neg_embeddings_source, neg_embeddings_target)
+        out_n = -torch.bmm(neg_embeddings_source, neg_embeddings_target) 
 
         # Calcola la probabilità predetta con la sigmoide
         prob_p = torch.sigmoid(out_p)  # Probabilità per i nodi positivi
@@ -677,6 +643,7 @@ class ScHetGNN(nn.Module):
         # La perdita totale
         loss_sum = loss_pos + loss_neg
         return loss_sum.mean()
+
 
     def kl_divergence_loss(self, embeddings, pos_source, pos_target, neg_source, neg_target):
         # Estrai gli embedding dei nodi
@@ -737,4 +704,5 @@ class ScHetGNN(nn.Module):
         loss = -torch.mean(torch.log(torch.sigmoid(out_p - out_n)))
 
         return loss
+
 
