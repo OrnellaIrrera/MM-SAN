@@ -4,20 +4,16 @@ MES and PubMed datasets are anonymous and available on [Figshare](https://doi.or
   
 
 ## Project structure
-The `main` folder of the project is MM-SAN-main. 
+The `main/src` folder of the project is MM-SAN-main contains all the code of the project. 
 - In the folder `utils` there are the file necessary to create the docker image and run the container.
-- The folder [preprocessing` contains the scripts to preprocess data and make these files ready for the augmentation, sampling and aggregation phases. Please, note that the files available on Figshare are already processed.
+- The folder `preprocessing` contains the scripts to preprocess data and make these files ready for the augmentation, sampling and aggregation phases. Please, note that the files available on Figshare are already processed.
 - The folder `augmentation` contains the scripts to perform entity linking and topic modelling and to analyze the data.
 - The folder `split` contains the scripts needed to partition data into training, validation and test (transductive, inductive, semi-inductive) sets.
-- The folder `model` contains the implementation of SAN comprising the sampling implemented via random walk, and aggregation implemented with multihead attention.
+- The folder `model` contains the implementation of MM-SAN comprising the sampling implemented via random walk, and aggregation implemented with cross attention. In this folder there are also alternative versions of MM-SAN, such as the alternative simpler encoder analysis.
+- The folder `baselines` contains the implementation of (i) the inductive baselines (HAN, HGT, SAGE, GAT, KGAT), (ii) text baseline (ST-T), (iii) the transductive baselines (VGAE, metapath2vec, RGCN, KGCN), (iv) dataset recsys baselines (HVGAE, EnsembleCN, Bi-encoder, LinearSVM)
 
-The folder `baselines` contains the implementation of the baselines (HAN, HGT, SAGE, GAT, ST-T)
+The folder `main/src_authors` contains other analyses and experiments conducted considering authors nodes as source of recommendation (in place of publications nodes).
 
-The folder `additional_analyses` contains other analyses and experiments conducted on different settings wrt those reported in the paper.
-
-The folder `MM-SAN_recsys_for_authors` contains other analyses and experiments conducted considering authors nodes as source of recommendation (in place of publications nodes). 
-
-The folder `ablation_study` contains the experiments run for the ablation study.
 
 
 ## Before running
@@ -54,6 +50,8 @@ __Step 3: Run__: Once that the three sets are available, it is possible to run t
 
 Please, note that the datasets provided on figshare contain all the data needed to run the experiments. Hence, it is possible to start from the **third** step, which consists in training SAN and evaluate its performances.
 
+:warning: The datasets on Figshare are already split and contain all the entities and topics extracted (so include the results you would obtain running steps from 0 to 2.
+
 ## Step 0: Data Preprocessing
 This step is not needed, as the data provided in Figshare are already preprocessed.
 However, we provided in any case the files we used to preprocess our graphs.
@@ -81,6 +79,8 @@ Split script allows to split the datasets into train, validation, test sets (thr
 docker run --rm -ti --gpus '"device=0"' --ipc=host --name split_container -v /path/sanproject/:/code/ san_image:latest python3 split/split.py -dataset=pubmed
 ```
 The argument `dataset` can take: `mes` and `pubmed` datasets
+
+
 
 ## Step 3: Train and test SAN
 ### Experiments
