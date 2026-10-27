@@ -1,16 +1,21 @@
 # Code for MM-SAN 
 This repository contains the code of MM-SAN, proposed as full paper at TORS.
 MES and PubMed datasets are anonymous and available on [Figshare](https://doi.org/10.6084/m9.figshare.26661382.v1)
+  
 
 ## Project structure
-The main folder of the project is MM-SAN-main. 
+The `main` folder of the project is MM-SAN-main. 
 - In the folder `utils` there are the file necessary to create the docker image and run the container.
 - The folder [preprocessing` contains the scripts to preprocess data and make these files ready for the augmentation, sampling and aggregation phases. Please, note that the files available on Figshare are already processed.
 - The folder `augmentation` contains the scripts to perform entity linking and topic modelling and to analyze the data.
 - The folder `split` contains the scripts needed to partition data into training, validation and test (transductive, inductive, semi-inductive) sets.
-- The folder `baselines` contains the implementation of the baselines (HAN, HGT, SAGE, GAT, ST-T)
 - The folder `model` contains the implementation of SAN comprising the sampling implemented via random walk, and aggregation implemented with multihead attention.
+
+- The folder `baselines` contains the implementation of the baselines (HAN, HGT, SAGE, GAT, ST-T)
 - The folder `additional_analyses` contains other analyses and experiments conducted on different settings wrt those reported in the paper.
+- The folder `MM-SAN_recsys_for_authors` contains other analyses and experiments conducted considering authors nodes as source of recommendation (in place of publications nodes). 
+- The folder `ablation_study` contains the experiments run for the ablation study.
+
 
 ## Before running
 ### Handle the data
