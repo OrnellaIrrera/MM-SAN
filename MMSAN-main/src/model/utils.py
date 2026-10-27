@@ -118,9 +118,17 @@ def create_graph_csv(path_final,dataset,nodes):
             pubpubedges = pd.read_csv(path_final+'/pubpubedges.csv')
         else:
             pubpubedges = pd.read_csv(path_final+'/pubpubedges.csv')
-        pubdataedges = pd.read_csv(path_final + '/pubdataedges.csv')
+        pubdataedges = pd.read_csv(path_final + '/pubdataedges_kcore.csv')
+
+        pubdataedges_train = pd.read_csv(path_final + '/pubdataedges_train_kcore_2.csv')
+        pubdataedges_vali = pd.read_csv(path_final + '/pubdataedges_validation_trans_kcore_2.csv')
+        pubdataedges_test_tr = pd.read_csv(path_final + '/pubdataedges_test_trans_kcore_2.csv')
+        pubdataedges_test_semi = pd.read_csv(path_final + '/pubdataedges_test_semi_kcore_2.csv')
+        pubdataedges_test_ind = pd.read_csv(path_final + '/pubdataedges_test_ind_kcore_2.csv')
+        #pubdataedges = pd.concat([pubdataedges,pubdataedges_test_tr,pubdataedges_test_semi,pubdataedges_test_ind ,pubdataedges_train,pubdataedges_vali,])
         edges.append(pubpubedges)
         edges.append(pubdataedges)
+
 
     if ('venues' in nodes or 'all' in nodes or 'original' in nodes) and dataset != 'mes':
         pubvenuesedges = pd.read_csv(path_final+'/pubvenuesedges.csv')
@@ -174,5 +182,28 @@ def create_graph_csv(path_final,dataset,nodes):
     edges_concat = pd.concat(edges,
                              ignore_index=True)
     G = nx.from_pandas_edgelist(edges_concat, 'source', 'target')
+
+    id_files = {
+        'publications': f'{path_final}/publications.csv',
+        'datasets': f'{path_final}/datasets.csv',
+    }
+
+
+    for node_type, fpath in id_files.items():
+        if node_type in nodes or 'all' in nodes or 'original' in nodes:
+
+            ids_df = pd.read_csv(fpath)
+            all_ids = ids_df['id'].tolist()
+
+
+            existing = set(G.nodes())
+            missing = set(all_ids) - existing
+            if missing:
+                print(f"[{node_type}] aggiungo {len(missing)} nodi isolati su {len(all_ids)} totali")
+                G.add_nodes_from(missing)
+
+
+    if 'a_10606' in G.nodes():
+        print('TROVATO NODO')
 
     return G

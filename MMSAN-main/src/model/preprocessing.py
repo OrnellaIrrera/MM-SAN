@@ -2,18 +2,17 @@ from sentence_transformers import SentenceTransformer
 import pandas as pd
 import pickle
 import networkx as nx
-# from node2vec import Node2Vec
 import args_list
 import utils
 import tqdm
-from nodevectors import Node2Vec
+from node2vec import Node2Vec
 from gensim.models import KeyedVectors
-
+import os
 
 class Preprocessor:
     def __init__(self,args):
         self.dataset = args.dataset
-        self.path = f'datasets/mes/{args.dataset}/final'
+        self.path = f'datasets/{args.dataset}/'
         self.core_pre_model = args.core_sentence_transformer
         self.key_sentence_transformer = args.key_sentence_transformer
         # self.universal_mapping = self.create_mapping()
@@ -31,6 +30,7 @@ class Preprocessor:
         publication_embeddings = model.encode(publications['content'])
         dataset_embeddings = model.encode(datasets['content'])
         print(type(publication_embeddings))
+        os.makedirs(f"model/data/{self.dataset}/embeddings",exist_ok=True)
         with open(f"model/data/{self.dataset}/embeddings/publications_embeddings.pkl", "wb") as fOut:
             pickle.dump({"ids": publications_id['id'].tolist(), "embeddings": publication_embeddings}, fOut, protocol=pickle.HIGHEST_PROTOCOL)
         fOut.close()
@@ -73,31 +73,57 @@ class Preprocessor:
         fOut.close()
 
     def create_hub_top_embeddings(self):
-        G = utils.create_graph_csv(f'datasets/{self.dataset}/all/final', self.dataset, ['all'])
-        g2v = Node2Vec(
-            n_components=128,
-            walklen=15
+        G = utils.create_graph_csv(f'datasets/{self.dataset}/', self.dataset, ['all'])
+        node2vec = Node2Vec(
+            G,
+            dimensions=128,
+            walk_length=15,
+            num_walks=10,
+            workers=4
+        )
+
+        model = node2vec.fit(
+            window=10,
+            min_count=1,
+            batch_words=4
         )
         EMBEDDING_MODEL = f'model/data/{self.dataset}/embeddings/node2vec'
-        # way faster than other node2vec implementations
-        # Graph edge weights are handled automatically
-        g2v.fit(G)
-        g2v.save(f'{EMBEDDING_MODEL}/node2vec')
+        os.makedirs(EMBEDDING_MODEL, exist_ok=True)
+        model.wv.save_word2vec_format(
+            f'{EMBEDDING_MODEL}/node2vec_model.bin',
+            binary=True
+        )
 
-        g2v = Node2Vec.load(f'{EMBEDDING_MODEL}/node2vec.zip')
-
-        # Save model to gensim.KeyedVector format
-        g2v.save_vectors(f'{EMBEDDING_MODEL}/node2vec_model.bin')
+        # g2v = Node2Vec(
+        #     n_components=128,
+        #     walklen=15
+        # )
+        # EMBEDDING_MODEL = f'model/data/{self.dataset}/embeddings/node2vec'
+        # # way faster than other node2vec implementations
+        # # Graph edge weights are handled automatically
+        # g2v.fit(G)
+        # g2v.save(f'{EMBEDDING_MODEL}/node2vec')
+        #
+        # g2v = Node2Vec.load(f'{EMBEDDING_MODEL}/node2vec.zip')
+        #
+        # # Save model to gensim.KeyedVector format
+        # g2v.save_vectors(f'{EMBEDDING_MODEL}/node2vec_model.bin')
 
     def save_embedding(self):
         EMBEDDING_MODEL = f'model/data/{self.dataset}/embeddings/node2vec'
-        model = KeyedVectors.load_word2vec_format(f"{EMBEDDING_MODEL}/node2vec_model.bin")
+        #model = KeyedVectors.load_word2vec_format(f"{EMBEDDING_MODEL}/node2vec_model.bin")
+
+        model = KeyedVectors.load_word2vec_format(
+            f"{EMBEDDING_MODEL}/node2vec_model.bin",
+            binary=True
+        )
         print(model)
 
         embeddings = []
         ids_list = []
         # for id in ids_to_search:
-        for id in model.vocab:
+        for id in model.key_to_index:
+        #for id in model.vocab:
             embeddings.append(model[str(id)])
             ids_list.append(str(id))
 
@@ -122,8 +148,8 @@ class Preprocessor:
         topics_embeddings = []
         keys_list = []
         keys_embeddings = []
-
-        for id in model.vocab:
+        for id in model.key_to_index:
+        #for id in model.vocab:
             print(id)
 
             embeddings.append(model[str(id)])
@@ -202,8 +228,13 @@ class Preprocessor:
 
 
 if __name__ == '__main__':
+
     args = args_list.get_args()
-    preproc = Preprocessor(args)
-#     preproc.create_core_nodes_embeddings()
-#     preproc.create_hub_keys_embeddings()
-    preproc.create_hub_top_embeddings()
+    for dataset in ['mes','pubmed']:
+        print(f'DATASET {dataset}')
+        args.dataset = dataset
+        preproc = Preprocessor(args)
+        preproc.create_core_nodes_embeddings()
+        preproc.create_hub_keys_embeddings()
+        preproc.create_hub_top_embeddings()
+        preproc.save_embedding()

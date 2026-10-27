@@ -4,7 +4,7 @@ def get_args():
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-dataset',default='mes',type=str,choices=['mes','pubmed_kcore','pubmed'],help='The dataset selected')
 	parser.add_argument('-split_type',default='t',type=str,choices=['t','il','if','ih'],help='type of split (select between transductive, inductive light, inductive full, inductive hard')
-	parser.add_argument('-path_data',default='datasets/mes/all/final',type=str)
+	parser.add_argument('-path_data',default='datasets/mes/',type=str)
 	parser.add_argument('-path_train_data',default='datasets/mes/split_transductive/train',type=str)
 	parser.add_argument('-path_vali_data',default='datasets/mes/split_transductive/validation',type=str)
 	parser.add_argument('-path_test_data',default='datasets/mes/split_transductive/test',type=str)
@@ -26,6 +26,8 @@ def get_args():
 	parser.add_argument('-hetgnn',action='store_true', help="whether to silent the vector")
 	parser.add_argument('-bootstrap',type=int, help="whether to silent the vector")
 	parser.add_argument('-split',type=float, help="split incomplete metadata",default=0)
+	parser.add_argument('-reverse_split',type=float, help="split incomplete metadata",default=0)
+	parser.add_argument('-rs',type=int, help="split incomplete metadata",default=0)
 	parser.add_argument('-inductive_type', type=str,choices=['light','full','trans'],default='trans', help="transductive training split ratio,default is 0.8")
 
 
@@ -51,7 +53,7 @@ def get_args():
 	parser.add_argument('-test', action="store_true",help='test the model')
 	parser.add_argument('-lp', action="store_true",help='link prediction results')
 	parser.add_argument('-rec', action="store_true",help='recommendation results')
-	parser.add_argument('-heads', default=1, type=int,help='attention heads')
+	parser.add_argument('-heads', default=8, type=int,help='attention heads')
 	parser.add_argument('-path', type=str,help='the path of the model to test heads')
 	parser.add_argument('-f1_threshold', type=float,help='the path of the model to test heads',default=0.5)
 	parser.add_argument('-loss', type=str,help='the loss function to minimize',default="crossentropy",choices=["crossentropy","kl","binarycross","hinge"])
@@ -63,16 +65,17 @@ def get_args():
 	parser.add_argument('-restart_probability',default=0.1,type=float,help='Restart probability')
 
 	# sampling params
-	parser.add_argument('-all_aggregation',default='mh-attention',type=str,choices=['mean','concat','lstm','mh-attention','cross-attention','cross-attention_1'],help='all nodes aggregation')
-	parser.add_argument('-core_aggregation',default='lstm',choices=['cross-attention','lstm','attention','mean_pooling','mh-attention','linear'],type=str,help='core based nodes aggregation')
-	parser.add_argument('-key_aggregation',default='lstm',type=str,choices=['cross-attention','lstm','attention','mh-attention','linear','cross-attention'],help='keyword based nodes aggregation')
-	parser.add_argument('-top_aggregation',default='lstm',type=str,choices=['cross-attention','lstm','attention','mh-attention','linear','cross-attention'],help='topology based nodes aggregation')
+	parser.add_argument('-all_aggregation',default='concat',type=str,choices=['mean','concat','lstm','mh-attention','cross-attention','cross-attention_1','gru'],help='all nodes aggregation')
+	parser.add_argument('-core_aggregation',default='cross-attention',choices=['cross-attention','lstm','attention','mean_pooling','mh-attention','linear','gru'],type=str,help='core based nodes aggregation')
+	parser.add_argument('-key_aggregation',default='cross-attention',type=str,choices=['cross-attention','lstm','attention','mh-attention','linear','cross-attention','gru'],help='keyword based nodes aggregation')
+	parser.add_argument('-top_aggregation',default='cross-attention',type=str,choices=['cross-attention','lstm','attention','mh-attention','linear','cross-attention','gru'],help='topology based nodes aggregation')
 	parser.add_argument('-keep_core',action="store_true", help="keep core vectors")
 	parser.add_argument('-keep_core_key',action="store_true", help="keep core vectors")
 	parser.add_argument('-keep_all',action="store_true", help="keep top vectors")
 	parser.add_argument('-keep_key',action="store_true", help="keep top vectors")
 	parser.add_argument('-keep_tpp',action="store_true", help="keep top vectors")
 	parser.add_argument('-rewrite',action="store_true", help="rewrite the paths")
+	parser.add_argument('-nodes_to_remove',default='',choices=['entity','topic','all',''])
 
 	# training
 	parser.add_argument('-eval_batch',action="store_true", help="keep top vectors")

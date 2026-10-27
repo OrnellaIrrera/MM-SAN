@@ -1,7 +1,7 @@
 import os
 import torch.nn as nn
 import args_list
-from sampler_sigir import RandomWalkWithRestart
+from sampler import RandomWalkWithRestart
 import torch
 import torch.nn.functional as F
 import numpy as np
@@ -151,22 +151,26 @@ class ScHetGNN(nn.Module):
 
     def aggregate_same_type_neigh(self,seed_vectors,seed_net_vectors,neigh_embeddings,neigh_net_embeddings,agg_type,type_emb='core'):
         embeddings = [lista for i, lista in enumerate(neigh_embeddings)]  # appendo il target vector, utile nell'aggregazione finale
-        queries = []
-        for ind, e in enumerate(embeddings):
-            seed = seed_vectors[ind]
-            queries.append(seed)
-        queries = [[emb[-1]] for emb in queries]
-        queries_tensors = [torch.stack(t) for t in queries]
-        embeddings_tensors = [[emb[-1] for emb in lista] for lista in embeddings]
-        embeddings_tensors = [torch.stack(t) for t in embeddings_tensors]
-
-        concatenated_queries_matt = torch.stack(queries_tensors, dim=0)
-        concatenated_embeddings_matt = torch.stack(embeddings_tensors, dim=0)
-        concatenated_embeddings_matt = torch.transpose(concatenated_embeddings_matt, 0, 1).to(self.device)
-        concatenated_queries_matt = torch.transpose(concatenated_queries_matt, 0, 1).to(self.device)
-
 
         if agg_type == 'mh-attention' and (type_emb == 'core' or type_emb == 'core_net'):
+            # prima era fuori
+
+            queries = []
+            for ind, e in enumerate(embeddings):
+                seed = seed_vectors[ind]
+                queries.append(seed)
+            queries = [[emb[-1]] for emb in queries]
+            queries_tensors = [torch.stack(t) for t in queries]
+            embeddings_tensors = [[emb[-1] for emb in lista] for lista in embeddings]
+            embeddings_tensors = [torch.stack(t) for t in embeddings_tensors]
+
+            concatenated_queries_matt = torch.stack(queries_tensors, dim=0)
+            concatenated_embeddings_matt = torch.stack(embeddings_tensors, dim=0)
+            concatenated_embeddings_matt = torch.transpose(concatenated_embeddings_matt, 0, 1).to(self.device)
+            concatenated_queries_matt = torch.transpose(concatenated_queries_matt, 0, 1).to(self.device)
+
+
+
             if type_emb == 'core':
                 output, _ = self.multihead_core_attn(concatenated_queries_matt.to(self.device),concatenated_embeddings_matt.to(self.device),concatenated_embeddings_matt.to(self.device))
                 output = output[0, :, :]
@@ -342,16 +346,7 @@ class ScHetGNN(nn.Module):
                                                  concatenated_embeddings_matt.to(self.device))
 
             output = output[0, :, :]
-            file_path = "./model/data/test_walks/core_embeddings.pkl"
 
-            # Save the embeddings
-            if not os.path.exists(file_path):
-                with open(file_path, "wb") as f:
-                    pickle.dump(output.detach().cpu(), f)
-            else:
-                embs = pickle.load(open(file_path, "rb"))
-                equal = torch.equal(output.detach().cpu(), embs.detach().cpu())
-                print("Sono identici core:", equal)
 
 
         elif type_emb == 'key':
@@ -362,16 +357,7 @@ class ScHetGNN(nn.Module):
                                                  concatenated_embeddings_matt.to(self.device))
 
             output = output[0, :, :]
-            file_path = "./model/data/test_walks/key_embeddings.pkl"
 
-            # Save the embeddings
-            if not os.path.exists(file_path):
-                with open(file_path, "wb") as g:
-                    pickle.dump(output.detach().cpu(), g)
-            else:
-                embs = pickle.load(open(file_path, "rb"))
-                equal = torch.equal(output.detach().cpu(), embs.detach().cpu())
-                print("Sono identici key:", equal)
 
 
         elif type_emb == 'top':
@@ -382,16 +368,7 @@ class ScHetGNN(nn.Module):
                                                  concatenated_embeddings_matt.to(self.device))
 
             output = output[0, :, :]
-            file_path = "./model/data/test_walks/top_embeddings.pkl"
 
-            # Save the embeddings
-            if not os.path.exists(file_path):
-                with open(file_path, "wb") as gg:
-                    pickle.dump(output.detach().cpu(), gg)
-            else:
-                embs = pickle.load(open(file_path, "rb"))
-                equal = torch.equal(output.detach().cpu(), embs.detach().cpu())
-                print("Sono identici top:", equal)
         return output
 
     def aggregate_same_type_neigh_mh(self, seed_vectors,seed_net_vectors, neigh_embeddings, neigh_net_embeddings, type_emb='core'):
