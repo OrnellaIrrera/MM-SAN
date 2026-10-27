@@ -962,99 +962,10 @@ class Trainer:
 if __name__ == '__main__':
     args = get_args()
     seed_torch()
-    # print("------arguments-------")
-    # for k, v in vars(args).items():
-    #     print(k + ': ' + str(v))
-
-    # model - ABLATION
     args = get_args()
-    if args.eval_neigh or args.eval_all:
-        args.eval_neigh = True
-        for lr in [(12, 12, 10), (3, 3, 3), (8, 8, 5)]:
-            args.n_cores = lr[0]
-            args.n_keys_hubs = lr[1]
-            args.n_top_hubs = lr[2]
-            trainer = Trainer(args)
-            trainer.run_transductive(type='trans')
-            # args.test = True
-            # trainer = Trainer(args)
-            # trainer.run_transductive(type='trans')
-
-    args = get_args()
-    if args.eval_heads or args.eval_all:
-        args.eval_heads = True
-        for lr in [1, 2, 4, 8, 16]:
-            args.heads = lr
-            trainer = Trainer(args)
-            trainer.run_transductive(type='trans')
-            # args.test = True
-            # trainer = Trainer(args)
-            # trainer.run_transductive(type='trans')
-
-    args = get_args()
-    seed_torch(args.random_seed)
-    if args.eval_lr or args.eval_all:
-        args.eval_lr = True
-        for lr in [0.0001, 0.00001, 0.00005, 0.001]:
-            args.lr = lr
-            trainer = Trainer(args)
-            trainer.run_transductive(type='trans')
-            # args.test = True
-            # trainer = Trainer(args)
-            # trainer.run_transductive(type='trans')
-
-    args = get_args()
-    if args.eval_batch or args.eval_all:
-        lrs = [64, 256, 4096]
-        args.eval_batch = True
-        for lr in lrs:
-            args.batch_size = lr
-            trainer = Trainer(args)
-            trainer.run_transductive(type='trans')
-            # args.test = True
-            # trainer = Trainer(args)
-            # trainer.run_transductive(type='trans')
-
-    args = get_args()
-    if args.eval_aggregation or args.eval_all:
-
-        args.eval_aggregation = True
-        for lr in ['gru', 'lstm', 'linear', 'mh-attention']:
-            print('AGGREGATION: ', lr)
-            args.core_aggregation = lr
-            args.key_aggregation = lr
-            args.top_aggregation = lr
-            trainer = Trainer(args)
-            trainer.run_transductive(type='trans')
-            # args.test = True
-            # trainer = Trainer(args)
-            # trainer.run_transductive(type='trans')
-
-    args = get_args()
-    if args.eval_combine_aggregation or args.eval_all:
-        args.eval_combine_aggregation = True
-        for lr in ['mh-attention', 'gru', 'lstm', 'mean']:
-            args.all_aggregation = lr
-            trainer = Trainer(args)
-            trainer.run_transductive(type='trans')
-
-    # if args.hetgnn and args.train:
-    #     # hetgnn
-    #     args = get_args()
-    #     args.epochs = 100
-    #     args.batch_size = 1024
-    #     args.core_aggregation = 'lstm'
-    #     args.key_aggregation = 'lstm'
-    #     args.top_aggregation = 'lstm'
-    #     args.all_aggregation = 'mh-attention'
-    #     args.heads = 1
-    #     trainer = Trainer(args)
-    #     trainer.run_transductive(type='trans')
-    #     if args.dataset =='mes' and args.no_metadata == False:
-    #         args.no_metadata = True
-    #         trainer = Trainer(args)
-    #         trainer.run_transductive(type='trans')
-
+    args.core_dim = 100
+    args.key_dim = 100
+    args.heads = 4
     # TRAINING CLASSICO
 
     if args.train:

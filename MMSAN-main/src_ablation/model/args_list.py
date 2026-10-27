@@ -29,7 +29,7 @@ def get_args():
 	parser.add_argument('-reverse_split',type=float, help="split incomplete metadata",default=0)
 	parser.add_argument('-rs',type=int, help="split incomplete metadata",default=0)
 	parser.add_argument('-inductive_type', type=str,choices=['light','full','trans'],default='trans', help="transductive training split ratio,default is 0.8")
-
+	parser.add_argument('-sensitivity',  action="store_true",help='ablation study sensitivity')
 
 	parser.add_argument('-n_cores', type=int, default=10, help='core set size')
 	parser.add_argument('-n_keys_hubs', type=int, default=10, help='batch size')
