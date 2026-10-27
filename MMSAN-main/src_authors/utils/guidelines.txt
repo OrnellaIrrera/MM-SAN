@@ -1,0 +1,42 @@
+-- create docker image
+
+docker build -t topic_modelling_image .
+
+-- run container 
+
+docker run --rm -ti --gpus '"device=0"' --name topic_modelling_container -v /srv/data/ornellairrera/datasearch/:/code/ topic_modelling_image:latest python3 topic_modelling/topic_modelling.py
+
+docker run --rm -ti --gpus '"device=1"' --name topic_modelling_container1 --network dbpedia-net -v /srv/data/ornellairrera/datasearch/:/code/ topic_modelling_image1:latest python3 topic_modelling/entity_linking.py
+
+-- to enter container bash 
+
+docker run --rm -ti --gpus '"device=0"' --name topic_modelling_container -v /srv/data/ornellairrera/datasearch/:/code/ topic_modelling_image:latest bash
+
+
+-- install en-sci-web
+
+docker run --rm -ti --gpus '"device=0"' --name topic_modelling_ps -v /srv/data/ornellairrera/datasearch/:/code/ topic_modelling_image:latest  python -m spacy download en_core_web_sm
+
+
+-- baselines trivial
+docker run --rm -ti --gpus '"device=0"' --name baselines_container_3 --network dbpedia-net -v /srv/data/ornellairrera/datasearch/:/code/ ds_image2:latest python3 baselines/trivial/trivial.py -dataset=pubmed_kcore
+
+-- dataset preprocessing
+docker run --rm -ti --gpus '"device=0"' --name topic_modelling_container1 --network dbpedia-net -v /srv/data/ornellairrera/datasearch/:/code/ topic_modelling_image:latest python3 dataset_preprocessing/preprocessing.py -dataset=pubmed
+
+
+-- topic modelling
+docker run --rm -ti --gpus '"device=0"' --name topic_modelling_container_1 --network dbpedia-net -v /srv/data/ornellairrera/datasearch/:/code/ topic_modelling_image:latest python3 topic_modelling/topic_modelling.py -dataset=p -repr_model=keybert -cluster_size=10
+
+
+-- entity linking
+ docker run --rm -ti --gpus '"device=0"' --name topic_modelling_container_1 --network dbpedia-net -v /srv/data/ornellairrera/datasearch/:/code/ topic_modelling_image:latest python3 topic_modelling/entity_linking.py -dataset=pubmed_kcore
+
+
+
+-- splitting
+docker run --rm -ti --gpus '"device=0"' --name topic_modelling_container_3 --network dbpedia-net -v /srv/data/ornellairrera/datasearch/:/code/ topic_modelling_image:latest python3 splitting/transductive/split.py  -test_split=0.1 -val_split=0.1 -dataset=mes
+
+
+
+
