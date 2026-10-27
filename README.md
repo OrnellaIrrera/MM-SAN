@@ -158,12 +158,29 @@ docker run --rm -ti --gpus '"device=0"' --ipc=host --name baselines_container --
 
 to run the other baselines, replace `transductive/stt.py` with the file you prefer inside `transductive` or `inductive` or `dataset_recsys` for the baselines of dataset recommendation.
 
+To run HGNN:
+```
+docker run --rm -ti --gpus '"device=0"' --ipc=host --name baselines_container --network san_net -v /path/sanproject/:/code/ san_image:latest python3 baselines/transductive/stt.py -dataset=mes 
+```
+
 ## Ablation Study and Sensitivity Analysis 
 The `src_ablation` folder contains the code to run the ablation study and a sensitivity analysis on the parameters of MM-SAN.
 
 To run the ablation study, run:
 ```
 docker run --rm -ti --gpus '"device=0"' --ipc=host --name baselines_container --network san_net -v /path/sanproject/:/code/ san_image:latest python3 model/main_ablation.py -dataset=mes 
+```
+
+If you want to add the sensitivity analysis, add the `--sensitivity` parameter.
+
+
+## Dataset recommendation for authors
+The `src_author` folder contains the code to run the experiments considering the task of dataset recommendation for authors.
+:warning: In the folder `src_author/datasets` there are the training, validation and test sets for these experiments. These files must be added to the folders downloaded from [Figshare](https://doi.org/10.6084/m9.figshare.26661382.v1)  :warning: 
+
+To run the training and evaluation of the task: 
+```
+docker run --rm -ti --gpus '"device=0"' --ipc=host --name baselines_container --network san_net -v /path/sanproject/:/code/ san_image:latest python3 model/main.py -dataset=mes -hgnn
 ```
 
 
