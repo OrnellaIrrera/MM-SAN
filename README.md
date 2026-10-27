@@ -11,10 +11,13 @@ The `main` folder of the project is MM-SAN-main.
 - The folder `split` contains the scripts needed to partition data into training, validation and test (transductive, inductive, semi-inductive) sets.
 - The folder `model` contains the implementation of SAN comprising the sampling implemented via random walk, and aggregation implemented with multihead attention.
 
-- The folder `baselines` contains the implementation of the baselines (HAN, HGT, SAGE, GAT, ST-T)
-- The folder `additional_analyses` contains other analyses and experiments conducted on different settings wrt those reported in the paper.
-- The folder `MM-SAN_recsys_for_authors` contains other analyses and experiments conducted considering authors nodes as source of recommendation (in place of publications nodes). 
-- The folder `ablation_study` contains the experiments run for the ablation study.
+The folder `baselines` contains the implementation of the baselines (HAN, HGT, SAGE, GAT, ST-T)
+
+The folder `additional_analyses` contains other analyses and experiments conducted on different settings wrt those reported in the paper.
+
+The folder `MM-SAN_recsys_for_authors` contains other analyses and experiments conducted considering authors nodes as source of recommendation (in place of publications nodes). 
+
+The folder `ablation_study` contains the experiments run for the ablation study.
 
 
 ## Before running
