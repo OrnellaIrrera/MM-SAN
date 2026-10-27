@@ -14,7 +14,7 @@ The `main/src` folder of the project is MM-SAN-main contains all the code of the
 - The folder `baselines` contains the implementation of (i) the inductive baselines (HAN, HGT, SAGE, GAT, KGAT), (ii) text baseline (ST-T), (iii) the transductive baselines (VGAE, metapath2vec, RGCN, KGCN), (iv) dataset recsys baselines (HVGAE, EnsembleCN, Bi-encoder, LinearSVM)
 
 The folder `main/src_authors` contains other analyses and experiments conducted considering authors nodes as source of recommendation (in place of publications nodes).
-
+The folder `main/src_ablation` contains the code to run all the configurations of the ablation study
 
 
 ## Before running
@@ -151,11 +151,11 @@ The dataset usable are: ```mes``` and ```pubmed```
 This folder contains the baselines reported in the paper. The code automatically generates the graphs needed to run the experiments. In this the graphs are those BEFORE the augmentation procedure, hence they differ from those provided in `processed` folder.
 
 
-To run the baselines run:
+To run the transductive baselines run:
 ```
-docker run --rm -ti --gpus '"device=0"' --ipc=host --name baselines_container --network san_net -v /path/sanproject/:/code/ san_image:latest python3 baselines/stt.py -dataset=mes 
+docker run --rm -ti --gpus '"device=0"' --ipc=host --name baselines_container --network san_net -v /path/sanproject/:/code/ san_image:latest python3 baselines/transductive/stt.py -dataset=mes 
 ```
 
-to run the other baselines, replace `stt.py` with the file you prefer starting with `main`.
+to run the other baselines, replace `transductive/stt.py` with the file you prefer inside `transductive` or `inductive` or `dataset_recsys` for the baselines of dataset recommendation.
 
 
