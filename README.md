@@ -2,6 +2,7 @@
 This repository contains the code of MM-SAN, proposed as full paper at TORS.
 MES and PubMed datasets are anonymous and available on [Figshare](https://doi.org/10.6084/m9.figshare.26661382.v1)
   
+![Model architecture](pipeline.png)
 
 ## Project structure
 The `main/src` folder of the project is MM-SAN-main contains all the code of the project. 
