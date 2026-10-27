@@ -43,8 +43,9 @@ import random
 import torch
 import numpy as np
 from sklearn.model_selection import train_test_split
-import loader
+import loader_old as loader
 from torch_geometric import seed_everything
+
 
 
 def dcg_at_k(r, k):
@@ -91,7 +92,7 @@ def main(args,indices = []):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-    root = f'./datasets/{dataset}/split_transductive/train'
+    root = f'datasets/{dataset}/'
     train_data, validation_data, test_data = loader.load_transductive_data(root, indices)
     if ind_full:
         train_data, validation_data, test_data = loader.load_inductive_data(root, 'full',indices)
@@ -99,7 +100,7 @@ def main(args,indices = []):
         train_data, validation_data, test_data = loader.load_inductive_data(root, 'light',indices)
 
 
-    num_publications = train_data['publication'].num_nodes
+    num_publications = train_data['author'].num_nodes
     num_dataset = train_data['dataset'].num_nodes
 
     if args.split:
@@ -221,7 +222,7 @@ def main(args,indices = []):
 
     @torch.no_grad()
     def validation(validation_data):
-        model.train()
+        model.eval()
         data = validation_data.to(device)
         h = model(data.x, data.edge_index)
         h_src = h[data.edge_label_index[0]]
@@ -264,11 +265,11 @@ def main(args,indices = []):
         print(line)
         #return roc_auc,f1
         if args.inductive_type == 'trans':
-            edge_label_index_positive = test_data['publication', 'cites', 'dataset'].edge_label_index_test_trans
+            edge_label_index_positive = test_data['author', 'isauthor', 'dataset'].edge_label_index_test_trans
         if args.inductive_type == 'light':
-            edge_label_index_positive = test_data['publication', 'cites', 'dataset'].edge_label_index_test_semi
+            edge_label_index_positive = test_data['author', 'isauthor', 'dataset'].edge_label_index_test_semi
         if args.inductive_type == 'full':
-            edge_label_index_positive = test_data['publication', 'cites', 'dataset'].edge_label_index_test_ind
+            edge_label_index_positive = test_data['author', 'isauthor', 'dataset'].edge_label_index_test_ind
         publications_embeddings = h[:num_publications]
         datasets_embeddings = h[num_publications:num_publications + num_dataset]
         h_src = publications_embeddings[sorted(list(set(edge_label_index_positive[0].tolist()))), :]
@@ -345,26 +346,27 @@ if __name__ == '__main__':
         args = parser.parse_args()
 
 
-        datasets = ['pubmed']
+        datasets = ['mes','pubmed']
         for dataset in datasets:
             print('\n\n\n')
             print(f'dataset: {dataset}')
-            for model in ['sage']:
+            for model in ['sage','gat']:
                 print(f'model: {model}')
                 print('\n\n\n')
                 args.model = model
                 args.dataset = dataset
+                args.test = True
                 if args.test:
 
                         for lr in [0.00001]:
                             for epochs in [200]:
                                 args.epochs = epochs
                                 print(lr, epochs)
-                                for me in [50,75]:
+                                for me in [0,50]:
                                     print(f'split: {me}')
                                     args.split = me
 
-                                    root = f'./datasets/{args.dataset}/split_transductive/train'
+                                    root = f'datasets/{args.dataset}/'
                                     data = ScholarlyDataset(root=root)
                                     train_data = data[0]
                                     dataset_num = train_data['dataset'].x.shape[0]
@@ -378,12 +380,12 @@ if __name__ == '__main__':
                                     print('TRANS')
                                     args.inductive_type = 'trans'
                                     main(args, indices)
-                                    # print('SEMI')
-                                    # args.inductive_type = 'light'
-                                    # main(args, indices)
-                                    # print('IND')
-                                    # args.inductive_type = 'full'
-                                    # main(args, indices)
+                                    print('SEMI')
+                                    args.inductive_type = 'light'
+                                    main(args, indices)
+                                    print('IND')
+                                    args.inductive_type = 'full'
+                                    main(args, indices)
 
                                     print('\n\n')
 

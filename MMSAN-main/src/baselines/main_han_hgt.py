@@ -50,7 +50,7 @@ import random
 import torch
 import numpy as np
 from sklearn.model_selection import train_test_split
-import loader
+import loader_old as loader
 from torch_geometric import seed_everything
 
 
@@ -109,11 +109,11 @@ def main(args,indices = []):
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    root = f'./datasets/{dataset}/split_transductive/train'
+    root = f'datasets/{dataset}/'
     data = ScholarlyDataset(root=root)
     train_data = data[0]
 
-    root = f'./datasets/{dataset}/split_transductive/train'
+    root = f'datasets/{dataset}/'
 
     train_data, validation_data, test_data = loader.load_transductive_data(root, indices)
     if ind_full:
@@ -129,7 +129,7 @@ def main(args,indices = []):
     train_data.to(device)
     validation_data.to(device)
     test_data.to(device)
-    num_publications = train_data['publication'].num_nodes
+    num_publications = train_data['author'].num_nodes
     num_dataset = train_data['dataset'].num_nodes
 
     if args.model == 'han':
@@ -144,7 +144,7 @@ def main(args,indices = []):
 
             def forward(self, x_dict, edge_index_dict):
                 out = self.han_conv(x_dict, edge_index_dict)
-                out_paper = self.lin_paper(out['publication'])
+                out_paper = self.lin_paper(out['author'])
                 out_data = self.lin_data(out['dataset'])
                 return out_paper,out_data
 
@@ -166,7 +166,7 @@ def main(args,indices = []):
         #     def forward(self, x_dict, edge_index_dict):
         #         for conv in self.convs:
         #             x_dict = conv(x_dict, edge_index_dict)
-        #         return self.lin(x_dict['publication']),self.lin(x_dict['dataset'])
+        #         return self.lin(x_dict['author']),self.lin(x_dict['dataset'])
 
         # Inicializando modelo e treinamento
         class HGT(torch.nn.Module):
@@ -195,7 +195,7 @@ def main(args,indices = []):
                 for conv in self.convs:
                     x_dict = conv(x_dict, edge_index_dict)
 
-                return self.lin_paper(x_dict['publication']),self.lin_data(x_dict['dataset'])
+                return self.lin_paper(x_dict['author']),self.lin_data(x_dict['dataset'])
 
         model = HGT(hidden_channels=ch, out_channels=ch, num_heads=heads, num_layers=layer,data=train_data).to(device)
         #model = HGT(hidden_channels=64, out_channels=10, num_heads=2, num_layers=2).to(device)
@@ -205,16 +205,18 @@ def main(args,indices = []):
 
     def train(train_data):
         model.train()
+        optimizer.zero_grad(set_to_none=True)
         data = train_data.to(device)
         h_paper,h_data = model(data.x_dict, data.edge_index_dict)
-        h_src = h_paper[data['publication','cites','dataset'].edge_label_index[0]]
-        h_dst = h_data[data['publication','cites','dataset'].edge_label_index[1]]
+        h_src = h_paper[data['author','isauthor','dataset'].edge_label_index[0]]
+        h_dst = h_data[data['author','isauthor','dataset'].edge_label_index[1]]
         link_pred = (h_src * h_dst).sum(dim=-1).to(device)
-        y_true_test = np.array([1] * int(data['publication','cites','dataset'].edge_label_index.size(1) / 2) + [0] * int(data['publication','cites','dataset'].edge_label_index.size(1) / 2))
+        y_true_test = np.array([1] * int(data['author','isauthor','dataset'].edge_label_index.size(1) / 2) + [0] * int(data['author','isauthor','dataset'].edge_label_index.size(1) / 2))
         y_true_test = torch.tensor(y_true_test).to(device)
         loss = F.binary_cross_entropy_with_logits(link_pred, y_true_test.float())
         loss.backward()
         optimizer.step()
+
 
         total_loss = float(loss)
         return total_loss
@@ -222,13 +224,13 @@ def main(args,indices = []):
 
     @torch.no_grad()
     def validation(validation_data):
-        model.train()
+        model.eval()
         data = validation_data.to(device)
         h_paper,h_data = model(data.x_dict, data.edge_index_dict)
-        h_src = h_paper[data['publication','cites','dataset'].edge_label_index[0]]
-        h_dst = h_data[data['publication','cites','dataset'].edge_label_index[1]]
+        h_src = h_paper[data['author','isauthor','dataset'].edge_label_index[0]]
+        h_dst = h_data[data['author','isauthor','dataset'].edge_label_index[1]]
         link_pred = (h_src * h_dst).sum(dim=-1).to(device)
-        y_true_test = np.array([1] * int(data['publication','cites','dataset'].edge_label_index.size(1) / 2) + [0] * int(data['publication','cites','dataset'].edge_label_index.size(1) / 2))
+        y_true_test = np.array([1] * int(data['author','isauthor','dataset'].edge_label_index.size(1) / 2) + [0] * int(data['author','isauthor','dataset'].edge_label_index.size(1) / 2))
         y_true_test = torch.tensor(y_true_test).to(device)
         loss = F.binary_cross_entropy_with_logits(link_pred, y_true_test.float())
 
@@ -245,9 +247,9 @@ def main(args,indices = []):
         test_data.to(device)
         h_paper,h_data = model(data.x_dict, data.edge_index_dict)
 
-        h_src = h_paper[data['publication','cites','dataset'].edge_label_index[0]]
-        h_dst = h_data[data['publication','cites','dataset'].edge_label_index[1]]
-        y_true_test = np.array([1] * int(data['publication','cites','dataset'].edge_label_index.size(1) / 2) + [0] * int(data['publication','cites','dataset'].edge_label_index.size(1) / 2))
+        h_src = h_paper[data['author','isauthor','dataset'].edge_label_index[0]]
+        h_dst = h_data[data['author','isauthor','dataset'].edge_label_index[1]]
+        y_true_test = np.array([1] * int(data['author','isauthor','dataset'].edge_label_index.size(1) / 2) + [0] * int(data['author','isauthor','dataset'].edge_label_index.size(1) / 2))
         y_true_test = torch.tensor(y_true_test).to(device)
 
         link_pred = torch.sigmoid((h_src * h_dst).sum(dim=-1))  # Inner product.
@@ -265,16 +267,22 @@ def main(args,indices = []):
         line = f'AUC {roc_auc} F1 {f1}'
         #return roc_auc,f1
         if args.inductive_type == 'trans':
-            edge_label_index_positive = test_data['publication', 'cites', 'dataset'].edge_label_index_test_trans
+            edge_label_index_positive = test_data['author', 'isauthor', 'dataset'].edge_label_index_test_trans
         if args.inductive_type == 'light':
-            edge_label_index_positive = test_data['publication', 'cites', 'dataset'].edge_label_index_test_semi
+            edge_label_index_positive = test_data['author', 'isauthor', 'dataset'].edge_label_index_test_semi
         if args.inductive_type == 'full':
-            edge_label_index_positive = test_data['publication', 'cites', 'dataset'].edge_label_index_test_ind
+            edge_label_index_positive = test_data['author', 'isauthor', 'dataset'].edge_label_index_test_ind
         publications_embeddings = h_paper
         datasets_embeddings = h_data
         h_src = publications_embeddings[sorted(list(set(edge_label_index_positive[0].tolist()))), :]
         h_dst = datasets_embeddings
-        final_matrix = torch.matmul(h_src, h_dst.t())
+
+        h_src = F.normalize(h_src, p=2, dim=-1)
+        h_dst = F.normalize(h_dst, p=2, dim=-1)
+
+        final_matrix = h_src @ h_dst.t()
+
+#        final_matrix = torch.matmul(h_src, h_dst.t())
 
         sources = edge_label_index_positive[0].tolist()
         targets = edge_label_index_positive[1].tolist()
@@ -321,11 +329,11 @@ def main(args,indices = []):
         # f1 = f1_score(y_true_test.cpu().numpy().astype(numpy.float32), predicted_labels)
         #
         # if type == 'trans':
-        #     edge_label_index_positive = test_data['publication', 'cites', 'dataset'].edge_label_index_test_trans
+        #     edge_label_index_positive = test_data['author', 'isauthor', 'dataset'].edge_label_index_test_trans
         # elif type == 'ind':
-        #     edge_label_index_positive = test_data['publication', 'cites', 'dataset'].edge_label_index_test_ind
+        #     edge_label_index_positive = test_data['author', 'isauthor', 'dataset'].edge_label_index_test_ind
         # elif type == 'semi':
-        #     edge_label_index_positive = test_data['publication', 'cites', 'dataset'].edge_label_index_test_semi
+        #     edge_label_index_positive = test_data['author', 'isauthor', 'dataset'].edge_label_index_test_semi
         #
         #
         # edge_label_index_positive = edge_label_index_positive[:,:int(edge_label_index_positive.size(1)/2)]
@@ -403,28 +411,27 @@ def main(args,indices = []):
 if __name__ == '__main__':
     args = parser.parse_args()
 
-    datasets = ['mes']
+    datasets = ['mes','pubmed']
     for dataset in datasets:
         print('\n\n\n')
         print(f'dataset: {dataset}')
         for model in ['hgt','han']:
-            print(f'model: {model}')
-            print('\n\n\n')
-            args.model = model
-            args.dataset = dataset
-            if args.test:
-                for epochs in [100]:
+                print(f'model: {model}')
+                print('\n\n\n')
+                args.model = model
+                args.dataset = dataset
+                for epochs in [200]:
                     args.epochs = epochs
-                    for lr in [0.001]: # hgt: 0.001
+                    for lr in [0.0010]: # hgt: 0.001
                         for me in [0]:
                             for heads in [2]: # hgt: 2
                                 for channels in [64]: # hgt: 64
-                                    for layer in [1]: # hgt: 1
+                                    for layer in [2]: # hgt: 1
                                          args.heads = heads
                                          args.channels = channels
                                          args.layer = layer
                                          args.split = me
-                                         root = f'./datasets/{args.dataset}/split_transductive/train'
+                                         root = f'datasets/{args.dataset}/'
                                          data = ScholarlyDataset(root=root)
                                          train_data = data[0]
                                          dataset_num = train_data['dataset'].x.shape[0]

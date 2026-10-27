@@ -135,7 +135,7 @@ class ScholarlyDataset(InMemoryDataset):
     def __init__(self, root, transform=None, pre_transform=None, pre_filter=None):
         super().__init__(root, transform, pre_transform, pre_filter)
 
-        self.data, self.slices = torch.load(self.processed_paths[0])
+        self.data, self.slices = torch.load(self.processed_paths[0],weights_only=False)
 
     @property
     def raw_file_names(self):
@@ -145,13 +145,14 @@ class ScholarlyDataset(InMemoryDataset):
     def processed_file_names(self):
         if 'transductive' in self.root:
             # return ['baseline_trans_1.pt']
-            return ['graph_transductive_kcore_1.pt']
+            return ['graph_transductive_kcore_auth.pt']
 
         elif 'inductive_full' in self.root:
             return ['graph_inductive_full_0.pt']
 
         elif 'inductive_light' in self.root:
             return ['graph_inductive_light_0.pt']
+        return ['graph_transductive_kcore_auth.pt']
 
     def download(self):
         # Download to `self.raw_dir`.
@@ -347,26 +348,26 @@ class ScholarlyDataset(InMemoryDataset):
 
 
         # leave part of edges for message passing
-        data['publication', 'cites', 'dataset'].edge_index_train = pd_edge_index_train
-        data['publication', 'cites', 'dataset'].edge_label_index_train = pd_edge_index_train
+        data['author', 'isauthor', 'dataset'].edge_index_train = pd_edge_index_train
+        data['author', 'isauthor', 'dataset'].edge_label_index_train = pd_edge_index_train
         cosine_label_ind = torch.cat([pd_edge_index_train,pd_edge_index_validation,pd_edge_index_test],dim=1)
-        data['publication', 'cites', 'dataset'].negative_edge_label_index_train = cosine_based_negative_samples(
+        data['author', 'isauthor', 'dataset'].negative_edge_label_index_train_trans = cosine_based_negative_samples(
             cosine_label_ind, pd_edge_index_train, data['publication'].x, data['dataset'].x)
 
-        data['publication', 'cites', 'dataset'].edge_index_validation = pd_edge_index_train
-        data['publication', 'cites', 'dataset'].edge_label_index_validation = pd_edge_index_validation
-        data['publication', 'cites', 'dataset'].negative_edge_label_index_validation = cosine_based_negative_samples(
+        data['author', 'isauthor', 'dataset'].edge_index_validation = pd_edge_index_train
+        data['author', 'isauthor', 'dataset'].edge_label_index_validation_trans = pd_edge_index_validation
+        data['author', 'isauthor', 'dataset'].negative_edge_label_index_validation_trans = cosine_based_negative_samples(
             cosine_label_ind, pd_edge_index_validation, data['publication'].x, data['dataset'].x)
 
-        data['publication', 'cites', 'dataset'].edge_index_test = torch.cat(
+        data['author', 'isauthor', 'dataset'].edge_index_test = torch.cat(
             [pd_edge_index_train, pd_edge_index_validation], dim=1)
-        data['publication', 'cites', 'dataset'].edge_label_index_test = pd_edge_index_test
-        data['publication', 'cites', 'dataset'].negative_edge_label_index_test = cosine_based_negative_samples(
+        data['author', 'isauthor', 'dataset'].edge_label_index_test_trans = pd_edge_index_test
+        data['author', 'isauthor', 'dataset'].negative_edge_label_index_test_trans = cosine_based_negative_samples(
             cosine_label_ind, pd_edge_index_test,
             data['publication'].x, data['dataset'].x)
 
-        data['publication', 'cites', 'publication'].edge_index = pp_edge_index
-        data['publication', 'cites', 'publication'].edge_label = pp_edge_label
+        data['author', 'isauthor', 'publication'].edge_index = pp_edge_index
+        data['author', 'isauthor', 'publication'].edge_label = pp_edge_label
         data['publication', 'hasauthor', 'author'].edge_index = pa_edge_index
         data['publication', 'hasauthor', 'author'].edge_label = pa_edge_label
         data['dataset', 'hasauthor', 'author'].edge_index = da_edge_index
@@ -526,34 +527,34 @@ class ScholarlyDataset(InMemoryDataset):
         data['author'].x = authors_x
         data['author'].mapping = author_mapping
         # leave part of edges for message passing
-        data['publication', 'cites', 'dataset'].edge_index_train = pd_edge_index_train
-        data['publication', 'cites', 'dataset'].edge_label_index_train = pd_edge_index_train
+        data['author', 'isauthor', 'dataset'].edge_index_train = pd_edge_index_train
+        data['author', 'isauthor', 'dataset'].edge_label_index_train = pd_edge_index_train
         cosine_label_ind = torch.cat([pd_edge_index_train, pd_edge_index_validation, pd_edge_index_test], dim=1)
-        data['publication', 'cites', 'dataset'].negative_edge_label_index_train = cosine_based_negative_samples(
+        data['author', 'isauthor', 'dataset'].negative_edge_label_index_train_trans = cosine_based_negative_samples(
             cosine_label_ind, pd_edge_index_train, data['publication'].x, data['dataset'].x,pub_to_avoid=sources_to_exclude_from_training,data_to_avoid=targets_to_exclude_from_training)
 
-        data['publication', 'cites', 'dataset'].edge_index_validation = pd_edge_index_train
-        data['publication', 'cites', 'dataset'].edge_label_index_validation = pd_edge_index_validation
-        data['publication', 'cites', 'dataset'].negative_edge_label_index_validation = cosine_based_negative_samples(
+        data['author', 'isauthor', 'dataset'].edge_index_validation = pd_edge_index_train
+        data['author', 'isauthor', 'dataset'].edge_label_index_validation_trans = pd_edge_index_validation
+        data['author', 'isauthor', 'dataset'].negative_edge_label_index_validation_trans = cosine_based_negative_samples(
             cosine_label_ind, pd_edge_index_validation, data['publication'].x, data['dataset'].x)
 
-        data['publication', 'cites', 'dataset'].edge_index_test = torch.cat(
+        data['author', 'isauthor', 'dataset'].edge_index_test = torch.cat(
             [pd_edge_index_train, pd_edge_index_validation], dim=1)
-        data['publication', 'cites', 'dataset'].edge_label_index_test = pd_edge_index_test
-        data['publication', 'cites', 'dataset'].negative_edge_label_index_test = cosine_based_negative_samples(
+        data['author', 'isauthor', 'dataset'].edge_label_index_test_trans = pd_edge_index_test
+        data['author', 'isauthor', 'dataset'].negative_edge_label_index_test_trans = cosine_based_negative_samples(
             cosine_label_ind, pd_edge_index_test,
             data['publication'].x, data['dataset'].x)
 
-        data['publication', 'cites', 'publication'].edge_index_train = pp_edge_index_train
-        data['publication', 'cites', 'publication'].edge_label_train = pp_edge_label_train
+        data['author', 'isauthor', 'publication'].edge_index_train = pp_edge_index_train
+        data['author', 'isauthor', 'publication'].edge_label_train = pp_edge_label_train
         data['publication', 'hasauthor', 'author'].edge_index_train = pa_edge_index_train
         data['publication', 'hasauthor', 'author'].edge_label_train = pa_edge_label_train
         data['dataset', 'hasauthor', 'author'].edge_index_train = da_edge_index
         data['dataset', 'hasauthor', 'author'].edge_label_train = da_edge_label
         data['dataset', 'cites', 'dataset'].edge_index_train = dd_edge_index_train
         data['dataset', 'cites', 'dataset'].edge_label_train = dd_edge_label_train
-        data['publication', 'cites', 'publication'].edge_index_test = pp_edge_index_test
-        data['publication', 'cites', 'publication'].edge_label_test = pp_edge_label_test
+        data['author', 'isauthor', 'publication'].edge_index_test = pp_edge_index_test
+        data['author', 'isauthor', 'publication'].edge_label_test = pp_edge_label_test
         data['publication', 'hasauthor', 'author'].edge_index_test = pa_edge_index_test
         data['publication', 'hasauthor', 'author'].edge_label_test = pa_edge_label_test
         data['dataset', 'hasauthor', 'author'].edge_index_test = da_edge_index_test
@@ -685,8 +686,8 @@ def load_transductive_data(root,indices=False):
         # print(train_data['dataset'].x.shape)
         if 'pubmed' in root:
             # del train_data['publication', 'hasvenue', 'venue']
-            del train_data['publication', 'hasauthor', 'author']
-            del train_data['dataset', 'hasauthor', 'author']
+            del train_data['author', 'isauthor', 'publication']
+            del train_data['author', 'isauthor', 'dataset']
             del train_data['author']
             del train_data['publication', 'hasorganization', 'organization']
             del train_data['dataset', 'hasorganization', 'organization']
@@ -705,30 +706,30 @@ def load_transductive_data(root,indices=False):
 
 
 
-    train_data['publication', 'cites', 'dataset'].edge_index = train_data[
-        'publication', 'cites', 'dataset'].edge_index_train
-    train_data['publication', 'cites', 'dataset'].edge_label_index = torch.cat(
-        [train_data['publication', 'cites', 'dataset'].edge_label_index_train,
-         train_data['publication', 'cites', 'dataset'].negative_edge_label_index_train], dim=1)
+    train_data['author', 'isauthor', 'dataset'].edge_index = train_data[
+        'author', 'isauthor', 'dataset'].edge_index_train
+    train_data['author', 'isauthor', 'dataset'].edge_label_index = torch.cat(
+        [train_data['author', 'isauthor', 'dataset'].edge_label_index_train,
+         train_data['author', 'isauthor', 'dataset'].negative_edge_label_index_train_trans], dim=1)
 
     data = ScholarlyDataset(root)
     validation_data = data[0]
     validation_data = remove_nodes(validation_data)
 
-    validation_data['publication', 'cites', 'dataset'].edge_index = validation_data[
-        'publication', 'cites', 'dataset'].edge_index_train
-    validation_data['publication', 'cites', 'dataset'].edge_label_index = torch.cat(
-        [validation_data['publication', 'cites', 'dataset'].edge_label_index_validation,
-         validation_data['publication', 'cites', 'dataset'].negative_edge_label_index_validation], dim=1)
+    validation_data['author', 'isauthor', 'dataset'].edge_index = validation_data[
+        'author', 'isauthor', 'dataset'].edge_index_train
+    validation_data['author', 'isauthor', 'dataset'].edge_label_index = torch.cat(
+        [validation_data['author', 'isauthor', 'dataset'].edge_label_index_validation_trans,
+         validation_data['author', 'isauthor', 'dataset'].negative_edge_label_index_validation_trans], dim=1)
 
     data = ScholarlyDataset(root)
     test_data = data[0]
     test_data = remove_nodes(test_data)
 
-    test_data['publication', 'cites', 'dataset'].edge_index = test_data['publication', 'cites', 'dataset'].edge_index_train
-    test_data['publication', 'cites', 'dataset'].edge_label_index = torch.cat(
-        [test_data['publication', 'cites', 'dataset'].edge_label_index_test,
-         test_data['publication', 'cites', 'dataset'].negative_edge_label_index_test], dim=1)
+    test_data['author', 'isauthor', 'dataset'].edge_index = test_data['author', 'isauthor', 'dataset'].edge_index_train
+    test_data['author', 'isauthor', 'dataset'].edge_label_index = torch.cat(
+        [test_data['author', 'isauthor', 'dataset'].edge_label_index_test_trans,
+         test_data['author', 'isauthor', 'dataset'].negative_edge_label_index_test_trans], dim=1)
 
     return train_data,validation_data,test_data
 
@@ -774,11 +775,11 @@ def load_inductive_data(root,inductive_type,indices=False):
 
 
 
-    edge_index_train = train_data['publication', 'cites', 'dataset'].edge_index_train
-    negative_edge_index_train = train_data['publication', 'cites', 'dataset'].negative_edge_label_index_train
-    edge_index_validation = train_data['publication', 'cites', 'dataset'].edge_label_index_validation
-    negative_edge_index_validation = train_data['publication', 'cites', 'dataset'].negative_edge_label_index_validation
-    edge_index_test = train_data['publication', 'cites', 'dataset'].edge_label_index_test
+    edge_index_train = train_data['author', 'isauthor', 'dataset'].edge_index_train
+    negative_edge_index_train = train_data['author', 'isauthor', 'dataset'].negative_edge_label_index_train_trans
+    edge_index_validation = train_data['author', 'isauthor', 'dataset'].edge_label_index_validation_trans
+    negative_edge_index_validation = train_data['author', 'isauthor', 'dataset'].negative_edge_label_index_validation_trans
+    edge_index_test = train_data['author', 'isauthor', 'dataset'].edge_label_index_test_trans
     # print(edge_index_train.shape)
     # print(edge_index_validation.shape)
     # print(edge_index_test.shape)
@@ -842,14 +843,14 @@ def load_inductive_data(root,inductive_type,indices=False):
     # edge_index_train = edge_index_train[:, combined_mask_train]
     # edge_index_validation = edge_index_validation[:, combined_mask_vali]
     #
-    # neg_train_mask = ~np.isin(train_data['publication', 'cites', 'dataset'].negative_edge_label_index_train[0, :], list(set(train_mask)))
-    # neg_target_mask = ~np.isin(train_data['publication', 'cites', 'dataset'].negative_edge_label_index_train[1, :], list(set(train_mask)))
+    # neg_train_mask = ~np.isin(train_data['author', 'isauthor', 'dataset'].negative_edge_label_index_train_trans[0, :], list(set(train_mask)))
+    # neg_target_mask = ~np.isin(train_data['author', 'isauthor', 'dataset'].negative_edge_label_index_train_trans[1, :], list(set(train_mask)))
     # neg_train_mask = neg_train_mask & neg_target_mask
-    # neg_vali_mask = ~np.isin(train_data['publication', 'cites', 'dataset'].negative_edge_label_index_validation[0, :], list(set(validation_mask)))
-    # neg_target_mask_vali = ~np.isin(train_data['publication', 'cites', 'dataset'].negative_edge_label_index_validation[1, :], list(set(validation_mask)))
+    # neg_vali_mask = ~np.isin(train_data['author', 'isauthor', 'dataset'].negative_edge_label_index_validation_trans[0, :], list(set(validation_mask)))
+    # neg_target_mask_vali = ~np.isin(train_data['author', 'isauthor', 'dataset'].negative_edge_label_index_validation_trans[1, :], list(set(validation_mask)))
     # neg_validation_mask = neg_vali_mask & neg_target_mask_vali
-    # negative_edge_index_train = train_data['publication', 'cites', 'dataset'].negative_edge_label_index_train[:, neg_train_mask]
-    # negative_edge_index_validation = train_data['publication', 'cites', 'dataset'].negative_edge_label_index_validation[:, neg_validation_mask]
+    # negative_edge_index_train = train_data['author', 'isauthor', 'dataset'].negative_edge_label_index_train_trans[:, neg_train_mask]
+    # negative_edge_index_validation = train_data['author', 'isauthor', 'dataset'].negative_edge_label_index_validation_trans[:, neg_validation_mask]
     # print('\n\n')
     min_train = min([edge_index_train.size(1),negative_edge_index_train.size(1)])
     # print(edge_index_train.shape)
@@ -858,12 +859,12 @@ def load_inductive_data(root,inductive_type,indices=False):
     negative_edge_index_train = negative_edge_index_train[:,:min_train]
     # print(negative_edge_index_train.shape)
 
-    train_data['publication', 'cites', 'dataset'].edge_index_train = edge_index_train
-    train_data['publication', 'cites', 'dataset'].edge_label_index_train = edge_index_train
-    train_data['publication', 'cites', 'dataset'].negative_edge_label_index_train = negative_edge_index_train
-    train_data['publication', 'cites', 'dataset'].edge_index = edge_index_train
-    train_data['publication', 'cites', 'dataset'].edge_label_index = torch.cat([edge_index_train,negative_edge_index_train], dim=1)
-    # print(train_data['publication', 'cites', 'dataset'].edge_label_index.shape)
+    train_data['author', 'isauthor', 'dataset'].edge_index_train = edge_index_train
+    train_data['author', 'isauthor', 'dataset'].edge_label_index_train = edge_index_train
+    train_data['author', 'isauthor', 'dataset'].negative_edge_label_index_train_trans = negative_edge_index_train
+    train_data['author', 'isauthor', 'dataset'].edge_index = edge_index_train
+    train_data['author', 'isauthor', 'dataset'].edge_label_index = torch.cat([edge_index_train,negative_edge_index_train], dim=1)
+    # print(train_data['author', 'isauthor', 'dataset'].edge_label_index.shape)
     # print('\n\n')
 
     for edge_type, edge_index in train_data.edge_index_dict.items():
@@ -879,7 +880,7 @@ def load_inductive_data(root,inductive_type,indices=False):
         # target_mask_vali = ~np.isin(train_data[edge_type].edge_index[1, :], list(set(train_mask)))
         # train_mask = vali_mask & target_mask_vali
         # train_data[edge_type].edge_index = train_data[edge_type].edge_index[:,train_mask]
-    # print(train_data['publication', 'cites', 'dataset'].edge_label_index.shape)
+    # print(train_data['author', 'isauthor', 'dataset'].edge_label_index.shape)
     data = ScholarlyDataset(root=root)
     validation_data = data[0]
     validation_data = remove_nodes(validation_data)
@@ -887,12 +888,12 @@ def load_inductive_data(root,inductive_type,indices=False):
     negative_edge_index_validation = negative_edge_index_validation[:,:min_vali]
     edge_index_validation = edge_index_validation[:,:min_vali]
 
-    validation_data['publication', 'cites', 'dataset'].negative_edge_label_index_validation = negative_edge_index_validation
-    validation_data['publication', 'cites', 'dataset'].edge_label_index_validation = edge_index_validation
-    validation_data['publication', 'cites', 'dataset'].edge_index = edge_index_train
-    validation_data['publication', 'cites', 'dataset'].edge_label_index = torch.cat(
-        [validation_data['publication', 'cites', 'dataset'].edge_label_index_validation,
-         validation_data['publication', 'cites', 'dataset'].negative_edge_label_index_validation], dim=1)
+    validation_data['author', 'isauthor', 'dataset'].negative_edge_label_index_validation_trans = negative_edge_index_validation
+    validation_data['author', 'isauthor', 'dataset'].edge_label_index_validation_trans = edge_index_validation
+    validation_data['author', 'isauthor', 'dataset'].edge_index = edge_index_train
+    validation_data['author', 'isauthor', 'dataset'].edge_label_index = torch.cat(
+        [validation_data['author', 'isauthor', 'dataset'].edge_label_index_validation_trans,
+         validation_data['author', 'isauthor', 'dataset'].negative_edge_label_index_validation_trans], dim=1)
 
     for edge_type, edge_index in validation_data.edge_index_dict.items():
         edge_index = validation_data[edge_type].edge_index
@@ -913,17 +914,17 @@ def load_inductive_data(root,inductive_type,indices=False):
     test_data = data[0]
     test_data = remove_nodes(test_data)
 
-    test_data['publication', 'cites', 'dataset'].edge_index = edge_index_train
-    test_data['publication', 'cites', 'dataset'].edge_label_index = torch.cat(
-        [test_data['publication', 'cites', 'dataset'].edge_label_index_test,
-         test_data['publication', 'cites', 'dataset'].negative_edge_label_index_test], dim=1)
+    test_data['author', 'isauthor', 'dataset'].edge_index = edge_index_train
+    test_data['author', 'isauthor', 'dataset'].edge_label_index = torch.cat(
+        [test_data['author', 'isauthor', 'dataset'].edge_label_index_test_trans,
+         test_data['author', 'isauthor', 'dataset'].negative_edge_label_index_test_trans], dim=1)
     # print(edge_index_train.shape)
     # print(edge_index_validation.shape)
 
-    test_coupd = test_data['publication', 'cites', 'dataset'].edge_label_index_test.t().tolist()
+    test_coupd = test_data['author', 'isauthor', 'dataset'].edge_label_index_test_trans.t().tolist()
     testsrc = [t[0] for t in test_coupd]
     testdst = [t[1] for t in test_coupd]
-    train_coup = train_data['publication', 'cites', 'dataset'].edge_label_index_train.t().tolist()
+    train_coup = train_data['author', 'isauthor', 'dataset'].edge_label_index_train.t().tolist()
     trainsrc = [t[0] for t in train_coup]
     traindst = [t[1] for t in train_coup]
 
