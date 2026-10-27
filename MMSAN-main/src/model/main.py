@@ -917,8 +917,24 @@ if __name__ == '__main__':
     # model - ABLATION
     args = get_args()
 
+    if args.hetgnn and args.train:
+        # hetgnn
+        args = get_args()
+        args.epochs = 100
+        args.batch_size = 1024
+        args.core_aggregation = 'lstm'
+        args.key_aggregation = 'lstm'
+        args.top_aggregation = 'lstm'
+        args.all_aggregation = 'mh-attention'
+        args.heads = 1
+        trainer = Trainer(args)
+        trainer.run_transductive(type='trans')
+        if args.dataset =='mes' and args.no_metadata == False:
+            args.no_metadata = True
+            trainer = Trainer(args)
+            trainer.run_transductive(type='trans')
 
-    if args.train:
+    elif args.train:
         args = get_args()
         print("DATASET", args.dataset)
         print("TO REM", args.nodes_to_remove)
