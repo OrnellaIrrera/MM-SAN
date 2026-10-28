@@ -173,6 +173,7 @@ To run HGNN:
 ```
 docker run --rm -ti --gpus '"device=0"' --ipc=host --name baselines_container --network san_net -v /path/sanproject/:/code/ san_image:latest python3 baselines/transductive/stt.py -dataset=mes 
 ```
+The EnsambleCN baseline, is available in the original repository: we used the same code of the authors. 
 
 ## Ablation Study and Sensitivity Analysis 
 The `src_ablation` folder contains the code to run the ablation study and a sensitivity analysis on the parameters of MM-SAN.
