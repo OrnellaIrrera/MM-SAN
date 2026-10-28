@@ -24,7 +24,7 @@ The `main/src` folder of the project is MM-SAN-main contains all the code of the
 - The folder `preprocessing` contains the scripts to preprocess data and make these files ready for the augmentation, sampling and aggregation phases. Please, note that the files available on Figshare are already processed.
 - The folder `augmentation` contains the scripts to perform entity linking and topic modelling and to analyze the data.
 - The folder `split` contains the scripts needed to partition data into training, validation and test (transductive, inductive, semi-inductive) sets.
-- The folder `model` contains the implementation of MM-SAN comprising the sampling implemented via random walk, and aggregation implemented with cross attention. In this folder there are also alternative versions of MM-SAN, such as the alternative simpler encoder analysis.
+- The folder `model` contains the implementation of MM-SAN comprising the sampling implemented via random walk, and aggregation implemented with cross attention. 
 - The folder `baselines` contains the implementation of (i) the inductive baselines (HAN, HGT, SAGE, GAT, KGAT), (ii) text baseline (ST-T), (iii) the transductive baselines (VGAE, metapath2vec, RGCN, KGCN), (iv) dataset recsys baselines (HVGAE, EnsembleCN, Bi-encoder, LinearSVM)
 
 The folder `main/src_authors` contains other analyses and experiments conducted considering authors nodes as source of recommendation (in place of publications nodes).
